@@ -27,11 +27,38 @@ type AnalysisPlan = {
   anomaly_checks: string[];
 };
 
+type GeneratedCode = {
+  code: string;
+  allowed_imports: string[];
+};
+
+type ExecutionArtifact = {
+  name: string;
+  path: string;
+  size_bytes: number;
+  content_type: string;
+  url: string;
+};
+
+type ExecutionResult = {
+  run_id: string;
+  status: "success" | "failed" | "timeout";
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  timed_out: boolean;
+  duration_ms: number;
+  artifacts: ExecutionArtifact[];
+  error: string | null;
+};
+
 type UploadResponse = {
   filename: string;
   profile: Profile;
   route: DatasetRoute;
   plan: AnalysisPlan;
+  codegen: GeneratedCode;
+  execution: ExecutionResult;
 };
 
 const API_BASE_URL =
@@ -226,8 +253,54 @@ export default function Home() {
               <span>
                 Confidence: {Math.round(result.route.confidence * 100)}%
               </span>
+              <span>Execution: {result.execution.status}</span>
+              <span>{result.execution.duration_ms}ms</span>
             </div>
-            <pre>{JSON.stringify(result.plan, null, 2)}</pre>
+            <div className="executionGrid">
+              <div>
+                <h3>Generated Python</h3>
+                <pre>{result.codegen.code}</pre>
+              </div>
+              <div>
+                <h3>Execution logs</h3>
+                <pre>
+                  {JSON.stringify(
+                    {
+                      status: result.execution.status,
+                      exit_code: result.execution.exit_code,
+                      timed_out: result.execution.timed_out,
+                      error: result.execution.error,
+                      stdout: result.execution.stdout,
+                      stderr: result.execution.stderr,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </div>
+            </div>
+            <h3>Artifacts</h3>
+            {result.execution.artifacts.length ? (
+              <div className="artifactGrid">
+                {result.execution.artifacts.map((artifact) => (
+                  <div className="artifactItem" key={artifact.name}>
+                    <div>
+                      <strong>{artifact.name}</strong>
+                      <span>{Math.ceil(artifact.size_bytes / 1024)} KB</span>
+                    </div>
+                    {artifact.content_type === "image/svg+xml" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        alt={artifact.name}
+                        src={`${API_BASE_URL}${artifact.url}`}
+                      />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">No artifacts were saved.</p>
+            )}
           </section>
         </section>
       ) : null}

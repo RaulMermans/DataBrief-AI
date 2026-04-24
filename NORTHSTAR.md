@@ -39,7 +39,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - demoable in under 2 minutes
 
 ## Current active phase
-**PHASE_3_ROUTING_AND_PLANNING**
+**PHASE_5_EVALUATION_AND_REPORTING**
 
 ## Phase index
 - `PHASE_1_FOUNDATION`
@@ -123,7 +123,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 ---
 
 # PHASE_3_ROUTING_AND_PLANNING
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 ## Scope
 - classify dataset as sales / generic
@@ -153,7 +153,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 ---
 
 # PHASE_4_CODEGEN_AND_SANDBOX
-**Status:** NOT_STARTED
+**Status:** DONE
 
 ## Scope
 - code generation
@@ -172,14 +172,17 @@ Stay a **bounded workflow**, not an open-ended agent.
 - bad generation path fails safely
 
 ## Checklist
-- [ ] code generator
-- [ ] isolated runtime
-- [ ] library allowlist
-- [ ] time/memory limits
-- [ ] stdout/stderr capture
-- [ ] artifact saving
-- [ ] code/log UI or debug view
-- [ ] safe-failure verification
+- [x] code generator
+- [x] isolated runtime
+- [x] library allowlist
+- [x] time/memory limits
+- [x] stdout/stderr capture
+- [x] artifact saving
+- [x] code/log UI or debug view
+- [x] safe-failure verification
+
+## Progress log
+- 2026-04-24: Added deterministic template-based Python generation, bounded subprocess execution, structured logs, artifact capture/serving, debug UI, and Phase 4 backend tests. Ready for Phase 5 evaluation/reporting without adding retry or report generation yet.
 
 ---
 

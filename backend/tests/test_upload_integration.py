@@ -28,6 +28,12 @@ def test_upload_returns_profile_and_route() -> None:
     assert payload["route"]["dataset_type"] == "sales"
     assert payload["plan"]["dataset_type"] == "sales"
     assert len(payload["plan"]["business_questions"]) == 5
+    assert "CONTEXT =" in payload["codegen"]["code"]
+    assert payload["execution"]["status"] == "success"
+    assert any(
+        artifact["name"].endswith(".svg")
+        for artifact in payload["execution"]["artifacts"]
+    )
 
 
 def test_upload_accepts_xlsx() -> None:
@@ -55,6 +61,7 @@ def test_upload_accepts_xlsx() -> None:
     assert payload["profile"]["row_count"] == 1
     assert payload["route"]["dataset_type"] == "generic"
     assert payload["plan"]["dataset_type"] == "generic"
+    assert payload["execution"]["status"] == "success"
 
 
 def test_upload_rejects_non_csv() -> None:

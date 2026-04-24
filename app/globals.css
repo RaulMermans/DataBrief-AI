@@ -257,11 +257,60 @@ button:disabled {
   padding: 14px;
 }
 
+.debugPanel h3 {
+  font-size: 0.95rem;
+  margin: 18px 0 8px;
+}
+
 .debugMeta {
   color: #52616d;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.executionGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+}
+
+.artifactGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.artifactItem {
+  border: 1px solid #edf0f2;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.artifactItem div {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.artifactItem strong,
+.artifactItem span {
+  overflow-wrap: anywhere;
+}
+
+.artifactItem span {
+  color: #52616d;
+  font-size: 0.82rem;
+}
+
+.artifactItem img {
+  border: 1px solid #edf0f2;
+  border-radius: 6px;
+  display: block;
+  margin-top: 10px;
+  max-width: 100%;
 }
 
 .muted {
@@ -305,7 +354,9 @@ th {
   .uploadRow,
   .routeBanner,
   .gridTwo,
-  .planGrid {
+  .planGrid,
+  .executionGrid,
+  .artifactGrid {
     align-items: stretch;
     display: grid;
     grid-template-columns: 1fr;

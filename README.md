@@ -2,7 +2,7 @@
 
 DataBrief AI is a workflow-driven analytics copilot for uploaded datasets.
 
-The current slice supports CSV/XLSX upload, deterministic profiling, sales/generic routing, and a structured analysis plan shell.
+The current slice supports CSV/XLSX upload, deterministic profiling, sales/generic routing, structured analysis planning, template-based Python generation, and bounded sandbox execution with artifacts.
 
 ## Run locally
 
@@ -32,7 +32,7 @@ python3 -m compileall backend
 - `GET /health`
 - `POST /api/upload` with multipart field `file`
 
-The upload endpoint returns `profile`, `route`, and deterministic `plan` payloads for CSV and XLSX files.
+The upload endpoint returns `profile`, `route`, deterministic `plan`, generated Python code, execution logs, and artifact metadata for CSV and XLSX files.
 
 ## Demo datasets
 
