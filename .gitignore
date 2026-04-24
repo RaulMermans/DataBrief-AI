@@ -1,0 +1,8 @@
+.DS_Store
+.env
+.next/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+node_modules/
+tsconfig.tsbuildinfo
