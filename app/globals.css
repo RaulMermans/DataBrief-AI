@@ -14,7 +14,8 @@ body {
 }
 
 button,
-input {
+input,
+pre {
   font: inherit;
 }
 
@@ -221,6 +222,48 @@ button:disabled {
   padding-left: 18px;
 }
 
+.planGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.planList {
+  border: 1px solid #edf0f2;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.planList h3 {
+  font-size: 0.95rem;
+  margin: 0 0 10px;
+}
+
+.planList ul {
+  color: #354652;
+  line-height: 1.5;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.debugPanel pre {
+  background: #111827;
+  border-radius: 8px;
+  color: #e5e7eb;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 12px 0 0;
+  overflow-x: auto;
+  padding: 14px;
+}
+
+.debugMeta {
+  color: #52616d;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .muted {
   color: #647482;
 }
@@ -261,7 +304,8 @@ th {
 
   .uploadRow,
   .routeBanner,
-  .gridTwo {
+  .gridTwo,
+  .planGrid {
     align-items: stretch;
     display: grid;
     grid-template-columns: 1fr;

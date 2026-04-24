@@ -1,6 +1,9 @@
-import pytest
+from io import BytesIO
 
-from backend.services.profiler import profile_csv
+import pytest
+from openpyxl import Workbook
+
+from backend.services.profiler import profile_csv, profile_xlsx
 
 
 def test_profile_csv_returns_core_dataset_profile() -> None:
@@ -26,3 +29,23 @@ def test_profile_csv_returns_core_dataset_profile() -> None:
 def test_profile_csv_rejects_empty_file() -> None:
     with pytest.raises(ValueError, match="empty"):
         profile_csv(b"")
+
+
+def test_profile_xlsx_returns_core_dataset_profile() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["order_date", "customer", "revenue", "units"])
+    sheet.append(["2026-01-01", "Ada", 120.5, 2])
+    sheet.append(["2026-01-02", "Grace", None, 1])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+
+    profile = profile_xlsx(buffer.getvalue()).to_dict()
+
+    assert profile["row_count"] == 2
+    assert profile["column_count"] == 4
+    assert profile["inferred_types"]["order_date"] == "date"
+    assert profile["inferred_types"]["revenue"] == "number"
+    assert profile["missing_percent_by_column"]["revenue"] == 50.0
+    assert profile["duplicate_rows"] == 0

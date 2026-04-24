@@ -3,8 +3,10 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from datetime import datetime
-from io import StringIO
+from io import BytesIO, StringIO
 from typing import Any
+
+from openpyxl import load_workbook
 
 
 MAX_SAMPLE_ROWS = 5
@@ -53,8 +55,48 @@ def profile_csv(content: bytes) -> Profile:
         }
         rows.append(row)
 
+    return profile_rows(rows, columns, "CSV")
+
+
+def profile_xlsx(content: bytes) -> Profile:
+    if not content:
+        raise ValueError("Uploaded file is empty")
+
+    try:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError("XLSX file could not be read") from exc
+
+    worksheet = workbook.active
+    row_iter = worksheet.iter_rows(values_only=True)
+    try:
+        header_row = next(row_iter)
+    except StopIteration as exc:
+        raise ValueError("XLSX must include a header row") from exc
+
+    columns = [_normalize_header(_cell_to_string(value)) for value in header_row]
+    if any(not column for column in columns):
+        raise ValueError("XLSX headers must not be empty")
+    if len(set(columns)) != len(columns):
+        raise ValueError("XLSX headers must be unique")
+
+    rows: list[dict[str, str]] = []
+    for raw_row in row_iter:
+        values = list(raw_row[: len(columns)])
+        values.extend([None] * (len(columns) - len(values)))
+        row = {
+            column: _clean_cell(_cell_to_string(value))
+            for column, value in zip(columns, values)
+        }
+        if any(value != "" for value in row.values()):
+            rows.append(row)
+
+    return profile_rows(rows, columns, "XLSX")
+
+
+def profile_rows(rows: list[dict[str, str]], columns: list[str], file_type: str) -> Profile:
     if not rows:
-        raise ValueError("CSV must include at least one data row")
+        raise ValueError(f"{file_type} must include at least one data row")
 
     duplicate_rows = _count_duplicate_rows(rows, columns)
     warnings = _build_warnings(rows, columns, duplicate_rows)
@@ -90,6 +132,14 @@ def _normalize_header(value: str | None) -> str:
 
 def _clean_cell(value: str | None) -> str:
     return (value or "").strip()
+
+
+def _cell_to_string(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
 
 
 def _count_duplicate_rows(rows: list[dict[str, str]], columns: list[str]) -> int:

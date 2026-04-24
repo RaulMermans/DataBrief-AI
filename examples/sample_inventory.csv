@@ -1,0 +1,5 @@
+sku,item,stock_count,reorder_level,warehouse
+SKU-100,Widget,42,20,Madrid
+SKU-200,Gadget,11,15,Barcelona
+SKU-300,Cable,120,40,Valencia
+SKU-400,Adapter,0,10,Madrid

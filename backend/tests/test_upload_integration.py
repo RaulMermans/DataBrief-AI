@@ -1,4 +1,7 @@
+from io import BytesIO
+
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 from backend.main import app
 
@@ -23,6 +26,35 @@ def test_upload_returns_profile_and_route() -> None:
     assert payload["profile"]["row_count"] == 1
     assert payload["profile"]["column_count"] == 3
     assert payload["route"]["dataset_type"] == "sales"
+    assert payload["plan"]["dataset_type"] == "sales"
+    assert len(payload["plan"]["business_questions"]) == 5
+
+
+def test_upload_accepts_xlsx() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["city", "population", "region"])
+    sheet.append(["Madrid", 3223000, "EMEA"])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+
+    response = client.post(
+        "/api/upload",
+        files={
+            "file": (
+                "cities.xlsx",
+                buffer.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["profile"]["row_count"] == 1
+    assert payload["route"]["dataset_type"] == "generic"
+    assert payload["plan"]["dataset_type"] == "generic"
 
 
 def test_upload_rejects_non_csv() -> None:
@@ -32,4 +64,4 @@ def test_upload_rejects_non_csv() -> None:
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Upload a CSV file."
+    assert response.json()["detail"] == "Upload a CSV or XLSX file."

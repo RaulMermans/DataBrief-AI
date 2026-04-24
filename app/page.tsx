@@ -18,10 +18,20 @@ type DatasetRoute = {
   explanation: string;
 };
 
+type AnalysisPlan = {
+  dataset_type: "sales" | "generic";
+  likely_kpis: string[];
+  business_questions: string[];
+  recommended_transformations: string[];
+  recommended_charts: string[];
+  anomaly_checks: string[];
+};
+
 type UploadResponse = {
   filename: string;
   profile: Profile;
   route: DatasetRoute;
+  plan: AnalysisPlan;
 };
 
 const API_BASE_URL =
@@ -46,7 +56,7 @@ export default function Home() {
     setResult(null);
 
     if (!file) {
-      setError("Choose a CSV file before running the workflow.");
+      setError("Choose a CSV or XLSX file before running the workflow.");
       return;
     }
 
@@ -80,22 +90,22 @@ export default function Home() {
       <section className="intro">
         <div>
           <p className="eyebrow">DataBrief AI</p>
-          <h1>CSV profile and routing workflow</h1>
+          <h1>Dataset profile, routing, and planning workflow</h1>
           <p className="lede">
-            Upload a CSV to validate the first deterministic slice: profile,
-            route as sales or generic, and render a report shell.
+            Upload a CSV or XLSX to profile the data, route it as sales or
+            generic, and generate a deterministic analysis plan.
           </p>
         </div>
       </section>
 
       <section className="panel">
         <form className="uploadForm" onSubmit={handleSubmit}>
-          <label htmlFor="dataset">Dataset CSV</label>
+          <label htmlFor="dataset">Dataset file</label>
           <div className="uploadRow">
             <input
               id="dataset"
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
             <button type="submit" disabled={isUploading}>
@@ -165,6 +175,26 @@ export default function Home() {
             </section>
           </div>
 
+          <section className="panel">
+            <h2>Analysis plan</h2>
+            <div className="planGrid">
+              <PlanList title="Likely KPIs" items={result.plan.likely_kpis} />
+              <PlanList
+                title="Business questions"
+                items={result.plan.business_questions}
+              />
+              <PlanList
+                title="Transformations"
+                items={result.plan.recommended_transformations}
+              />
+              <PlanList title="Charts" items={result.plan.recommended_charts} />
+              <PlanList
+                title="Anomaly checks"
+                items={result.plan.anomaly_checks}
+              />
+            </div>
+          </section>
+
           <section className="panel tablePanel">
             <h2>Sample rows</h2>
             <div className="tableWrap">
@@ -188,9 +218,33 @@ export default function Home() {
               </table>
             </div>
           </section>
+
+          <section className="panel debugPanel">
+            <h2>Developer debug</h2>
+            <div className="debugMeta">
+              <span>Route: {result.route.dataset_type}</span>
+              <span>
+                Confidence: {Math.round(result.route.confidence * 100)}%
+              </span>
+            </div>
+            <pre>{JSON.stringify(result.plan, null, 2)}</pre>
+          </section>
         </section>
       ) : null}
     </main>
+  );
+}
+
+function PlanList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="planList">
+      <h3>{title}</h3>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

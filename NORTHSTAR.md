@@ -39,7 +39,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - demoable in under 2 minutes
 
 ## Current active phase
-**PHASE_1_FOUNDATION**
+**PHASE_3_ROUTING_AND_PLANNING**
 
 ## Phase index
 - `PHASE_1_FOUNDATION`
@@ -90,7 +90,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 ---
 
 # PHASE_2_UPLOAD_AND_PROFILING
-**Status:** NOT_STARTED
+**Status:** DONE
 
 ## Scope
 - CSV/XLSX upload
@@ -109,23 +109,24 @@ Stay a **bounded workflow**, not an open-ended agent.
 - [x] upload UI
 - [x] file validation
 - [x] CSV parse
-- [ ] XLSX parse
+- [x] XLSX parse
 - [x] profiling function
 - [x] profile UI
 - [x] invalid-file errors
 - [x] profiling test
-- [ ] sample verification
+- [x] sample verification
 
 ## Progress log
 - 2026-04-24: Built first CSV-only vertical slice: Next.js upload UI, FastAPI upload endpoint, profiler, sales/generic router, profile/report shell, health route, env validation, and focused backend tests.
+- 2026-04-24: Closed ingestion milestone with XLSX support, clearer file validation, sample datasets, and sample route verification.
 
 ---
 
 # PHASE_3_ROUTING_AND_PLANNING
-**Status:** NOT_STARTED
+**Status:** IN_PROGRESS
 
 ## Scope
-- classify dataset as sales / ecommerce / finance / generic
+- classify dataset as sales / generic
 - select domain template
 - generate structured analysis plan
 - render plan
@@ -138,13 +139,16 @@ Stay a **bounded workflow**, not an open-ended agent.
 - at least one routing test exists
 
 ## Checklist
-- [ ] dataset router
-- [ ] domain templates
-- [ ] analysis plan
-- [ ] plan UI
-- [ ] route logging
-- [ ] routing test
-- [ ] sample verification
+- [x] dataset router
+- [x] domain templates
+- [x] analysis plan
+- [x] plan UI
+- [x] route logging
+- [x] routing test
+- [x] sample verification
+
+## Progress log
+- 2026-04-24: Started Phase 3 with deterministic sales/generic planning and developer JSON output. Keep next work scoped to planning polish before codegen/sandbox.
 
 ---
 
