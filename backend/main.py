@@ -10,12 +10,14 @@ from openpyxl import load_workbook
 
 from backend.config import load_settings
 from backend.services.codegen import generate_python_script
+from backend.services.groundedness import check_and_revise
 from backend.services.planner import generate_analysis_plan
 from backend.services.profiler import profile_csv, profile_xlsx
+from backend.services.report_generator import generate_report, load_summary_json
+from backend.services.retry_runner import run_with_retry
 from backend.services.router import route_dataset
 from backend.services.sandbox_runner import (
     create_run_directory,
-    execute_generated_code,
     resolve_artifact_path,
 )
 
@@ -86,10 +88,10 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict[str, object]:
         input_file_path=execution_input_path,
         artifact_dir=artifact_dir,
     )
-    execution = execute_generated_code(
+
+    # --- Phase 5: bounded retry loop ---
+    retry_result = run_with_retry(
         code=generated_code.code,
-        run_id=run_id,
-        run_dir=run_dir,
         artifact_dir=artifact_dir,
     )
 
@@ -98,13 +100,37 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict[str, object]:
     except OSError:
         pass
 
+    # --- Phase 5: report generation ---
+    report = generate_report(
+        profile=profile_payload,
+        route=route_payload,
+        plan=plan_payload,
+        evaluation=retry_result.final_evaluation,
+        execution=retry_result.final_execution,
+    )
+
+    # --- Phase 5: groundedness check (single pass) ---
+    summary_data = load_summary_json(retry_result.final_execution.artifacts)
+    computed_facts = {
+        **summary_data,
+        "row_count": profile_payload.get("row_count", 0),
+        "column_count": profile_payload.get("column_count", 0),
+        "duplicate_rows": profile_payload.get("duplicate_rows", 0),
+        "dataset_type": route_payload.get("dataset_type", "generic"),
+    }
+    report = check_and_revise(report, computed_facts)
+
     return {
         "filename": file.filename,
         "profile": profile_payload,
         "route": route_payload,
         "plan": plan_payload,
         "codegen": generated_code.to_dict(),
-        "execution": execution.to_dict(),
+        # Phase 4 compat: expose final execution under "execution" key
+        "execution": retry_result.final_execution.to_dict(),
+        # Phase 5 additions
+        "retry": retry_result.to_dict(),
+        "report": report.to_dict(),
     }
 
 

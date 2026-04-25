@@ -372,3 +372,232 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+/* -------------------------------------------------------------------------
+   Phase 5 — Report UI
+   ---------------------------------------------------------------------- */
+
+.reportPanel {
+  border-left: 4px solid #2f6f68;
+}
+
+.reportHeader {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.reportHeader h2 {
+  margin-bottom: 0;
+}
+
+.outcomeBadge {
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  text-transform: capitalize;
+}
+
+.outcomeSuccess {
+  background: #e6f4f1;
+  color: #1b5e57;
+}
+
+.outcomeWarn {
+  background: #fff8e6;
+  color: #7a4f00;
+}
+
+.outcomeError {
+  background: #fff0f0;
+  color: #8b1a1a;
+}
+
+.evaluatorNote {
+  background: #f6f7f9;
+  border-left: 3px solid #aab4bf;
+  color: #52616d;
+  font-size: 0.88rem;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+}
+
+.revisionNotice {
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 8px;
+  color: #7a4f00;
+  font-size: 0.86rem;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+}
+
+.reportSection {
+  border-top: 1px solid #edf0f2;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.reportSection h3 {
+  font-size: 0.95rem;
+  margin: 0 0 12px;
+}
+
+.execSummary {
+  color: #1f2933;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.kpiGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.kpiCard {
+  background: #f0f7f6;
+  border: 1px solid #c4deda;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.kpiLabel {
+  color: #376a63;
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.kpiValue {
+  display: block;
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+
+.findingsList {
+  color: #354652;
+  line-height: 1.65;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.findingsList li {
+  margin-bottom: 6px;
+}
+
+.flagBadge {
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.flagOk {
+  background: #e6f4f1;
+  color: #1b5e57;
+}
+
+.flagWarn {
+  background: #fff8e6;
+  color: #7a4f00;
+}
+
+.flagError {
+  background: #fff0f0;
+  color: #8b1a1a;
+}
+
+.confidenceNote {
+  border-top: 1px solid #edf0f2;
+  color: #647482;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin: 18px 0 0;
+  padding-top: 14px;
+}
+
+/* Retry history */
+.retryHistory {
+  margin-bottom: 16px;
+}
+
+.retryHistory h3 {
+  font-size: 0.95rem;
+  margin: 0 0 10px;
+}
+
+.retryList {
+  display: grid;
+  gap: 8px;
+}
+
+.retryAttempt {
+  background: #f6f7f9;
+  border: 1px solid #d8dee4;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.retryMeta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.retryNum {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.retryReason {
+  color: #647482;
+  font-size: 0.82rem;
+}
+
+.retryNote {
+  color: #52616d;
+  font-size: 0.84rem;
+  margin: 0;
+}
+
+/* Debug toggle */
+.debugHeader {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.debugHeader h2 {
+  margin-bottom: 0;
+}
+
+.debugToggle {
+  background: transparent;
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  color: #52616d;
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-height: unset;
+  padding: 4px 12px;
+}
+
+.debugToggle:hover {
+  background: #f6f7f9;
+}
+
+@media (max-width: 800px) {
+  .kpiGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+

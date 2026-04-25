@@ -39,7 +39,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - demoable in under 2 minutes
 
 ## Current active phase
-**PHASE_5_EVALUATION_AND_REPORTING**
+**PHASE_6_EXPORTS_AND_POLISH**
 
 ## Phase index
 - `PHASE_1_FOUNDATION`
@@ -188,7 +188,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 ---
 
 # PHASE_5_EVALUATION_AND_REPORTING
-**Status:** NOT_STARTED
+**Status:** DONE
 
 ## Scope
 - execution evaluator
@@ -206,14 +206,17 @@ Stay a **bounded workflow**, not an open-ended agent.
 - evaluator outcomes are logged or visible
 
 ## Checklist
-- [ ] execution evaluator
-- [ ] code retry loop
-- [ ] report generator
-- [ ] groundedness evaluator
-- [ ] summary revision
-- [ ] final report UI
-- [ ] partial-result path
-- [ ] evaluator logging
+- [x] execution evaluator
+- [x] code retry loop
+- [x] report generator
+- [x] groundedness evaluator
+- [x] summary revision
+- [x] final report UI
+- [x] partial-result path
+- [x] evaluator logging
+
+## Progress log
+- 2026-04-25: Implemented the execution evaluator, deterministic 2-attempt bounded retry loop, fully grounded report generator, single-pass groundedness validator, and updated the UI to render the comprehensive report with an explicit confidence note and revision marker.
 
 ---
 

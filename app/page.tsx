@@ -2,6 +2,10 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 type Profile = {
   row_count: number;
   column_count: number;
@@ -52,6 +56,57 @@ type ExecutionResult = {
   error: string | null;
 };
 
+type EvaluationResult = {
+  outcome: "success" | "recoverable" | "unrecoverable";
+  note: string;
+};
+
+type RetryAttempt = {
+  attempt: number;
+  execution: ExecutionResult;
+  evaluation: EvaluationResult;
+  reason: string;
+};
+
+type RetryResult = {
+  final_execution: ExecutionResult;
+  final_evaluation: EvaluationResult;
+  retry_count: number;
+  retry_history: RetryAttempt[];
+};
+
+type KpiCard = {
+  label: string;
+  value: string | number;
+  source: string;
+};
+
+type Finding = {
+  description: string;
+  source: string;
+};
+
+type AnomalyRow = {
+  check: string;
+  value: string | number;
+  flag: "ok" | "warning" | "error";
+};
+
+type ReportPayload = {
+  executive_summary: string;
+  kpi_cards: KpiCard[];
+  top_findings: Finding[];
+  anomaly_table: AnomalyRow[];
+  data_quality_warnings: string[];
+  business_recommendations: string[];
+  confidence_note: string;
+  is_partial: boolean;
+  evaluator_note: string;
+  chart_artifacts: string[];
+  revised: boolean;
+  revision_note: string;
+};
+
 type UploadResponse = {
   filename: string;
   profile: Profile;
@@ -59,21 +114,26 @@ type UploadResponse = {
   plan: AnalysisPlan;
   codegen: GeneratedCode;
   execution: ExecutionResult;
+  retry: RetryResult;
+  report: ReportPayload;
 };
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   const columns = useMemo(() => {
-    if (!result?.profile.sample_rows.length) {
-      return [];
-    }
+    if (!result?.profile.sample_rows.length) return [];
     return Object.keys(result.profile.sample_rows[0]);
   }, [result]);
 
@@ -117,10 +177,11 @@ export default function Home() {
       <section className="intro">
         <div>
           <p className="eyebrow">DataBrief AI</p>
-          <h1>Dataset profile, routing, and planning workflow</h1>
+          <h1>Dataset analysis workflow</h1>
           <p className="lede">
             Upload a CSV or XLSX to profile the data, route it as sales or
-            generic, and generate a deterministic analysis plan.
+            generic, generate a deterministic analysis plan, execute the
+            analysis, and receive a grounded report.
           </p>
         </div>
       </section>
@@ -136,7 +197,7 @@ export default function Home() {
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
             <button type="submit" disabled={isUploading}>
-              {isUploading ? "Profiling..." : "Run profile"}
+              {isUploading ? "Analysing…" : "Run analysis"}
             </button>
           </div>
         </form>
@@ -146,6 +207,7 @@ export default function Home() {
 
       {result ? (
         <section className="results">
+          {/* Route banner */}
           <div className="routeBanner">
             <div>
               <p className="eyebrow">Detected dataset type</p>
@@ -157,6 +219,12 @@ export default function Home() {
             <p>{result.route.explanation}</p>
           </div>
 
+          {/* ----------------------------------------------------------------
+              PHASE 5 — Final report
+          ---------------------------------------------------------------- */}
+          <FinalReport report={result.report} apiBase={API_BASE_URL} />
+
+          {/* Profile cards */}
           <div className="cards">
             <MetricCard label="Rows" value={result.profile.row_count} />
             <MetricCard label="Columns" value={result.profile.column_count} />
@@ -246,67 +314,293 @@ export default function Home() {
             </div>
           </section>
 
+          {/* ----------------------------------------------------------------
+              Developer debug (collapsible)
+          ---------------------------------------------------------------- */}
           <section className="panel debugPanel">
-            <h2>Developer debug</h2>
-            <div className="debugMeta">
-              <span>Route: {result.route.dataset_type}</span>
-              <span>
-                Confidence: {Math.round(result.route.confidence * 100)}%
-              </span>
-              <span>Execution: {result.execution.status}</span>
-              <span>{result.execution.duration_ms}ms</span>
+            <div className="debugHeader">
+              <h2>Developer debug</h2>
+              <button
+                id="toggle-debug"
+                className="debugToggle"
+                onClick={() => setShowDebug((v) => !v)}
+              >
+                {showDebug ? "Hide" : "Show"}
+              </button>
             </div>
-            <div className="executionGrid">
-              <div>
-                <h3>Generated Python</h3>
-                <pre>{result.codegen.code}</pre>
-              </div>
-              <div>
-                <h3>Execution logs</h3>
-                <pre>
-                  {JSON.stringify(
-                    {
-                      status: result.execution.status,
-                      exit_code: result.execution.exit_code,
-                      timed_out: result.execution.timed_out,
-                      error: result.execution.error,
-                      stdout: result.execution.stdout,
-                      stderr: result.execution.stderr,
-                    },
-                    null,
-                    2
-                  )}
-                </pre>
-              </div>
-            </div>
-            <h3>Artifacts</h3>
-            {result.execution.artifacts.length ? (
-              <div className="artifactGrid">
-                {result.execution.artifacts.map((artifact) => (
-                  <div className="artifactItem" key={artifact.name}>
-                    <div>
-                      <strong>{artifact.name}</strong>
-                      <span>{Math.ceil(artifact.size_bytes / 1024)} KB</span>
-                    </div>
-                    {artifact.content_type === "image/svg+xml" ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        alt={artifact.name}
-                        src={`${API_BASE_URL}${artifact.url}`}
-                      />
-                    ) : null}
+
+            {showDebug ? (
+              <>
+                <div className="debugMeta">
+                  <span>Route: {result.route.dataset_type}</span>
+                  <span>
+                    Confidence: {Math.round(result.route.confidence * 100)}%
+                  </span>
+                  <span>
+                    Final status: {result.retry.final_evaluation.outcome}
+                  </span>
+                  <span>Retries: {result.retry.retry_count}</span>
+                  <span>{result.execution.duration_ms}ms</span>
+                </div>
+
+                {/* Retry history */}
+                <RetryHistory retryResult={result.retry} />
+
+                <div className="executionGrid">
+                  <div>
+                    <h3>Generated Python</h3>
+                    <pre>{result.codegen.code}</pre>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">No artifacts were saved.</p>
-            )}
+                  <div>
+                    <h3>Execution logs</h3>
+                    <pre>
+                      {JSON.stringify(
+                        {
+                          status: result.execution.status,
+                          exit_code: result.execution.exit_code,
+                          timed_out: result.execution.timed_out,
+                          error: result.execution.error,
+                          stdout: result.execution.stdout,
+                          stderr: result.execution.stderr,
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
+                </div>
+
+                <h3>Artifacts</h3>
+                {result.execution.artifacts.length ? (
+                  <div className="artifactGrid">
+                    {result.execution.artifacts.map((artifact) => (
+                      <div className="artifactItem" key={artifact.name}>
+                        <div>
+                          <strong>{artifact.name}</strong>
+                          <span>{Math.ceil(artifact.size_bytes / 1024)} KB</span>
+                        </div>
+                        {artifact.content_type === "image/svg+xml" ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            alt={artifact.name}
+                            src={`${API_BASE_URL}${artifact.url}`}
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted">No artifacts were saved.</p>
+                )}
+              </>
+            ) : null}
           </section>
         </section>
       ) : null}
     </main>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Report components
+// ---------------------------------------------------------------------------
+
+function outcomeClass(outcome: string) {
+  if (outcome === "success") return "outcomeSuccess";
+  if (outcome === "unrecoverable") return "outcomeError";
+  return "outcomeWarn";
+}
+
+function flagClass(flag: string) {
+  if (flag === "ok") return "flagOk";
+  if (flag === "error") return "flagError";
+  return "flagWarn";
+}
+
+function FinalReport({
+  report,
+  apiBase,
+}: {
+  report: ReportPayload;
+  apiBase: string;
+}) {
+  return (
+    <section className="panel reportPanel">
+      <div className="reportHeader">
+        <h2>Analysis report</h2>
+        <span className={`outcomeBadge ${outcomeClass(report.is_partial ? "recoverable" : "success")}`}>
+          {report.is_partial ? "Partial results" : "Complete"}
+        </span>
+      </div>
+
+      {/* Evaluator note */}
+      {report.evaluator_note ? (
+        <p className="evaluatorNote">{report.evaluator_note}</p>
+      ) : null}
+
+      {/* Groundedness revision notice */}
+      {report.revised ? (
+        <div className="revisionNotice">
+          ⚠ Report was revised: {report.revision_note}
+        </div>
+      ) : null}
+
+      {/* Executive summary */}
+      {report.executive_summary ? (
+        <div className="reportSection">
+          <h3>Executive summary</h3>
+          <p className="execSummary">{report.executive_summary}</p>
+        </div>
+      ) : null}
+
+      {/* KPI cards */}
+      {report.kpi_cards.length > 0 ? (
+        <div className="reportSection">
+          <h3>Key metrics</h3>
+          <div className="kpiGrid">
+            {report.kpi_cards.map((card) => (
+              <div className="kpiCard" key={card.label}>
+                <span className="kpiLabel">{card.label}</span>
+                <strong className="kpiValue">
+                  {typeof card.value === "number"
+                    ? card.value.toLocaleString()
+                    : card.value}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Top findings */}
+      {report.top_findings.length > 0 ? (
+        <div className="reportSection">
+          <h3>Top findings</h3>
+          <ul className="findingsList">
+            {report.top_findings.map((f, i) => (
+              <li key={i}>{f.description}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Anomaly table */}
+      {report.anomaly_table.length > 0 ? (
+        <div className="reportSection">
+          <h3>Anomaly checks</h3>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Value</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.anomaly_table.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.check}</td>
+                    <td>{String(row.value)}</td>
+                    <td>
+                      <span className={`flagBadge ${flagClass(row.flag)}`}>
+                        {row.flag}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Data quality warnings */}
+      {report.data_quality_warnings.length > 0 ? (
+        <div className="reportSection">
+          <h3>Data quality warnings</h3>
+          <ul className="warnings">
+            {report.data_quality_warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Business recommendations */}
+      {report.business_recommendations.length > 0 ? (
+        <div className="reportSection">
+          <h3>Recommendations</h3>
+          <ul className="findingsList">
+            {report.business_recommendations.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Chart artifacts */}
+      {report.chart_artifacts.length > 0 ? (
+        <div className="reportSection">
+          <h3>Charts</h3>
+          <div className="artifactGrid">
+            {report.chart_artifacts.map((url) => {
+              const name = url.split("/").pop() ?? url;
+              return (
+                <div className="artifactItem" key={url}>
+                  <strong>{name}</strong>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img alt={name} src={`${apiBase}${url}`} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Confidence note */}
+      {report.confidence_note ? (
+        <p className="confidenceNote">{report.confidence_note}</p>
+      ) : null}
+    </section>
+  );
+}
+
+function RetryHistory({ retryResult }: { retryResult: RetryResult }) {
+  if (retryResult.retry_history.length <= 1 && retryResult.retry_count === 0) {
+    return (
+      <p className="muted" style={{ marginBottom: "12px" }}>
+        Succeeded on first attempt — no retries needed.
+      </p>
+    );
+  }
+
+  return (
+    <div className="retryHistory">
+      <h3>Retry history ({retryResult.retry_count} retry/retries)</h3>
+      <div className="retryList">
+        {retryResult.retry_history.map((attempt) => (
+          <div className="retryAttempt" key={attempt.attempt}>
+            <div className="retryMeta">
+              <span className="retryNum">Attempt {attempt.attempt}</span>
+              <span
+                className={`outcomeBadge ${outcomeClass(attempt.evaluation.outcome)}`}
+              >
+                {attempt.evaluation.outcome}
+              </span>
+              <span className="retryReason">{attempt.reason}</span>
+            </div>
+            <p className="retryNote">{attempt.evaluation.note}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared components (unchanged from Phase 4)
+// ---------------------------------------------------------------------------
 
 function PlanList({ title, items }: { title: string; items: string[] }) {
   return (
