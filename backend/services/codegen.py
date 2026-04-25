@@ -8,7 +8,6 @@ from typing import Any
 
 ALLOWED_EXTERNAL_LIBRARIES = {"pandas", "numpy", "matplotlib", "seaborn"}
 ALLOWED_STDLIB_IMPORTS = {
-    "builtins",
     "collections",
     "csv",
     "datetime",
@@ -78,8 +77,7 @@ def generate_python_script(
     )
 
 
-_SCRIPT_TEMPLATE = r'''import builtins
-import csv
+_SCRIPT_TEMPLATE = r'''import csv
 import datetime
 import html
 import json
@@ -89,31 +87,10 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-
-_ORIGINAL_IMPORT = builtins.__import__
-_ALLOWED_IMPORTS = {
-    "builtins",
-    "collections",
-    "csv",
-    "datetime",
-    "html",
-    "json",
-    "math",
-    "pathlib",
-    "statistics",
-    "sys",
-}
-
-
-def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
-    root_name = name.split(".", 1)[0]
-    if root_name not in _ALLOWED_IMPORTS:
-        raise ImportError(f"Import '{root_name}' is not allowed in this sandbox script")
-    return _ORIGINAL_IMPORT(name, globals, locals, fromlist, level)
-
-
-builtins.__import__ = _guarded_import
-
+# Import policy is enforced by AST analysis in sandbox_runner before this
+# script is executed.  There is no runtime import monkeypatch here because
+# stdlib internal lazy imports (e.g. _io, ntpath) would trigger a blanket
+# guard and cause spurious failures.
 
 CONTEXT = __CONTEXT_JSON__
 INPUT_FILE = Path(CONTEXT["input_file_path"])

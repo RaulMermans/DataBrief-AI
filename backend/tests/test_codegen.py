@@ -26,5 +26,5 @@ def test_generate_python_script_has_expected_shape(tmp_path: Path) -> None:
     assert '"revenue"' in script.code
     assert "subprocess" not in script.code
     assert "socket" not in script.code
-    assert "builtins.__import__ = _guarded_import" in script.code
+    assert "builtins.__import__" not in script.code  # monkeypatch removed; AST policy enforced pre-execution
     assert "pandas" in script.allowed_imports

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -9,6 +10,37 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+
+# ---------------------------------------------------------------------------
+# AST-based import policy
+# ---------------------------------------------------------------------------
+# These are the ONLY top-level module names the generated script is allowed to
+# import.  Stdlib internal sub-modules (e.g. _io, ntpath) are excluded from
+# this list intentionally: they must not appear as explicit imports in
+# generated code.  The policy is enforced by static AST analysis BEFORE any
+# subprocess is spawned; there is no runtime monkeypatch.
+# ---------------------------------------------------------------------------
+_ALLOWED_TOP_LEVEL_IMPORTS: frozenset[str] = frozenset(
+    {
+        # stdlib used by the template
+        "builtins",
+        "collections",
+        "csv",
+        "datetime",
+        "html",
+        "json",
+        "math",
+        "pathlib",
+        "statistics",
+        "sys",
+        # approved external libraries
+        "pandas",
+        "numpy",
+        "matplotlib",
+        "seaborn",
+    }
+)
 
 
 RUN_ROOT = Path(tempfile.gettempdir()) / "databrief-ai-runs"
@@ -68,6 +100,44 @@ def create_run_directory() -> tuple[str, Path, Path]:
     return run_id, run_dir, artifact_dir
 
 
+def validate_imports(code: str) -> str | None:
+    """Return an error message if *code* imports a disallowed module, else None.
+
+    Parses the script with the stdlib ``ast`` module and inspects every
+    ``import`` and ``from … import`` statement at any nesting level.  Only the
+    root (top-level) module name is checked so that sub-package imports such as
+    ``from pathlib import Path`` continue to work as long as ``pathlib`` is
+    allowed.
+
+    This replaces the previous ``builtins.__import__`` monkeypatch which was
+    brittle because stdlib internal lazy imports (e.g. ``_io``, ``ntpath``)
+    triggered the guard and caused spurious failures.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        return f"Generated script has a syntax error: {exc}"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".", 1)[0]
+                if root not in _ALLOWED_TOP_LEVEL_IMPORTS:
+                    return (
+                        f"Generated script imports '{root}' which is not on the"
+                        " approved list for sandbox execution."
+                    )
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:  # absolute import only
+                root = node.module.split(".", 1)[0]
+                if root not in _ALLOWED_TOP_LEVEL_IMPORTS:
+                    return (
+                        f"Generated script imports from '{root}' which is not on"
+                        " the approved list for sandbox execution."
+                    )
+    return None
+
+
 def execute_generated_code(
     code: str,
     run_id: str,
@@ -76,6 +146,21 @@ def execute_generated_code(
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     memory_limit_mb: int = DEFAULT_MEMORY_LIMIT_MB,
 ) -> SandboxResult:
+    # --- AST import check (pre-execution, no subprocess needed) -------------
+    import_error = validate_imports(code)
+    if import_error:
+        return SandboxResult(
+            run_id=run_id,
+            status="failed",
+            exit_code=None,
+            stdout="",
+            stderr="",
+            timed_out=False,
+            duration_ms=0,
+            artifacts=[],
+            error=import_error,
+        )
+
     script_path = run_dir / "analysis.py"
     script_path.write_text(code, encoding="utf-8")
 
@@ -170,6 +255,12 @@ def resolve_artifact_path(run_id: str, artifact_name: str) -> Path | None:
 
 
 def _sandbox_env() -> dict[str, str]:
+    # NOTE: This environment strips most host variables and prevents user-site
+    # packages from loading.  It does NOT block network access at the OS level
+    # (no network namespace / seccomp / iptables rules).  The primary defence
+    # against unexpected network use is the AST import policy: socket, urllib,
+    # requests, httpx, etc. are not on the approved import list and will be
+    # rejected before the subprocess starts.
     return {
         "LC_ALL": "C.UTF-8",
         "LANG": "C.UTF-8",
