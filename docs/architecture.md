@@ -16,7 +16,7 @@ The current implementation is intentionally direct:
 - `backend/services/codegen.py`: deterministic template-based Python generation.
 - `backend/services/sandbox_runner.py`: bounded subprocess execution and artifact metadata.
 
-No queue, LangGraph, auth, database, retry loop, report generator, or model calls are part of this slice.
+No queue, LangGraph, auth, database, or model calls are part of this slice. (A bounded retry loop and a report generator were added in Phase 5).
 
 ## Data handling
 

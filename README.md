@@ -32,7 +32,7 @@ python3 -m compileall backend
 - `GET /health`
 - `POST /api/upload` with multipart field `file`
 
-The upload endpoint returns `profile`, `route`, deterministic `plan`, generated Python code, execution logs, and artifact metadata for CSV and XLSX files.
+The upload endpoint returns `profile`, `route`, deterministic `plan`, generated Python code, execution logs, `retry` history, `report` summary, and artifact metadata for CSV and XLSX files.
 
 ## Demo datasets
 
