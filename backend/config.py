@@ -10,6 +10,7 @@ class Settings:
     environment: str
     cors_origins: list[str]
     max_upload_mb: int
+    data_run_ttl_hours: int
 
 
 def load_settings() -> Settings:
@@ -33,8 +34,17 @@ def load_settings() -> Settings:
     if max_upload_mb <= 0:
         raise RuntimeError("DATABRIEF_MAX_UPLOAD_MB must be greater than zero")
 
+    raw_ttl = os.getenv("DATA_RUN_TTL_HOURS", "24")
+    try:
+        data_run_ttl_hours = int(raw_ttl)
+    except ValueError as exc:
+        raise RuntimeError("DATA_RUN_TTL_HOURS must be an integer") from exc
+    if data_run_ttl_hours <= 0:
+        raise RuntimeError("DATA_RUN_TTL_HOURS must be greater than zero")
+
     return Settings(
         environment=environment,
         cors_origins=cors_origins,
         max_upload_mb=max_upload_mb,
+        data_run_ttl_hours=data_run_ttl_hours,
     )

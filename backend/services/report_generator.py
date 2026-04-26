@@ -79,6 +79,7 @@ class ReportPayload:
     # Groundedness tracking
     revised: bool = False
     revision_note: str = ""
+    claims: list[dict] = field(default_factory=list)  # GroundedClaim dicts
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -94,6 +95,7 @@ class ReportPayload:
             "chart_artifacts": self.chart_artifacts,
             "revised": self.revised,
             "revision_note": self.revision_note,
+            "claims": self.claims,
         }
 
 

@@ -38,7 +38,6 @@ type GeneratedCode = {
 
 type ExecutionArtifact = {
   name: string;
-  path: string;
   size_bytes: number;
   content_type: string;
   url: string;

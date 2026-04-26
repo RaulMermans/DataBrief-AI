@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -57,9 +58,9 @@ class ArtifactMetadata:
     url: str
 
     def to_dict(self) -> dict[str, Any]:
+        # path is intentionally excluded — never expose host filesystem paths in API responses.
         return {
             "name": self.name,
-            "path": self.path,
             "size_bytes": self.size_bytes,
             "content_type": self.content_type,
             "url": self.url,
@@ -138,6 +139,79 @@ def validate_imports(code: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Additional static safety checks (beyond import allowlist)
+# ---------------------------------------------------------------------------
+# These checks look for patterns that shouldn't appear in generated analysis
+# code even if the author of the code has only allowed imports.
+# NOTE: true production hardening requires OS-level isolation (container/
+# network namespace/seccomp). These checks are a defence-in-depth layer only.
+# ---------------------------------------------------------------------------
+
+_FORBIDDEN_BUILTINS: frozenset[str] = frozenset({"eval", "exec", "compile", "__import__"})
+_FORBIDDEN_OS_ATTRS: frozenset[str] = frozenset(
+    {"system", "popen", "execv", "execve", "execvp", "execvpe", "fork",
+     "environ", "getenv", "putenv", "unsetenv"}
+)
+_SUSPICIOUS_PATH_PREFIXES: tuple[str, ...] = (
+    # System config / sensitive dirs.  Deliberately excludes /tmp/ and
+    # /var/folders/ (macOS temp) since generated scripts legitimately embed
+    # those paths for input and artifact access.
+    "/etc/",
+    "/root/",
+    "/home/",
+    "/proc/",
+    "/sys/",
+    "C:\\Windows\\",
+    "C:\\Users\\",
+    "C:\\Program Files",
+)
+
+
+def validate_suspicious_patterns(code: str) -> str | None:
+    """Return an error message if *code* contains dangerous patterns beyond import policy.
+
+    Checks (static AST analysis only, no execution):
+    - Calls to eval / exec / compile / __import__
+    - Access to os.system, os.popen, os.environ, os.execv*, os.fork, os.getenv
+    - Hardcoded absolute paths pointing at sensitive system locations
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        return f"Generated script has a syntax error: {exc}"
+
+    for node in ast.walk(tree):
+        # Bare calls: eval(...), exec(...), compile(...), __import__(...)
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in _FORBIDDEN_BUILTINS:
+                return (
+                    f"Generated script calls '{func.id}' which is not allowed "
+                    "in sandbox execution."
+                )
+
+        # Attribute access: os.system(...), os.environ[...], etc.
+        if isinstance(node, ast.Attribute):
+            if isinstance(node.value, ast.Name) and node.value.id == "os":
+                if node.attr in _FORBIDDEN_OS_ATTRS:
+                    return (
+                        f"Generated script accesses 'os.{node.attr}' which is "
+                        "not allowed in sandbox execution."
+                    )
+
+        # Hardcoded absolute paths pointing at sensitive locations
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            val = node.value
+            if any(val.startswith(prefix) for prefix in _SUSPICIOUS_PATH_PREFIXES):
+                return (
+                    f"Generated script contains a suspicious hardcoded path: "
+                    f"'{val[:60]}'"
+                )
+
+    return None
+
+
 def execute_generated_code(
     code: str,
     run_id: str,
@@ -159,6 +233,21 @@ def execute_generated_code(
             duration_ms=0,
             artifacts=[],
             error=import_error,
+        )
+
+    # --- Additional suspicious-pattern check --------------------------------
+    pattern_error = validate_suspicious_patterns(code)
+    if pattern_error:
+        return SandboxResult(
+            run_id=run_id,
+            status="failed",
+            exit_code=None,
+            stdout="",
+            stderr="",
+            timed_out=False,
+            duration_ms=0,
+            artifacts=[],
+            error=pattern_error,
         )
 
     script_path = run_dir / "analysis.py"
@@ -281,6 +370,24 @@ def _resource_limiter(memory_limit_mb: int, timeout_seconds: int):
             return
 
     return limit_resources
+
+
+def cleanup_expired_runs(ttl_hours: int) -> int:
+    """Delete run directories older than *ttl_hours*. Returns the number of deleted dirs."""
+    if not RUN_ROOT.exists():
+        return 0
+    cutoff = time.time() - (ttl_hours * 3600)
+    deleted = 0
+    for run_dir in RUN_ROOT.iterdir():
+        if not run_dir.is_dir():
+            continue
+        try:
+            if run_dir.stat().st_mtime < cutoff:
+                shutil.rmtree(run_dir)
+                deleted += 1
+        except (OSError, PermissionError):
+            pass
+    return deleted
 
 
 def _content_type(path: Path) -> str:

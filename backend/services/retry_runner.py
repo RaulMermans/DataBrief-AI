@@ -1,16 +1,28 @@
-"""Bounded retry runner.
+"""Bounded repair runner.
 
-Wraps ``execute_generated_code`` in a deterministic retry loop capped at
-``max_retries`` additional attempts after the first (so at most
-``max_retries + 1`` total attempts).
+Executes generated code in the sandbox and, on recoverable failure, applies a
+deterministic repair to the codegen inputs before re-generating and re-executing.
 
-Retry policy (explicit, no open-ended agentic behaviour):
-- Stop immediately if the evaluation is ``success`` or ``unrecoverable``.
-- Retry if the evaluation is ``recoverable`` and we have not yet exhausted the
-  allowed attempt count.
-- Each retry re-executes the *same* generated code in a fresh run directory;
-  there is no codegen loop here.
-- Every attempt (success or failure) is recorded in ``retry_history``.
+Repair policy (explicit, no open-ended agentic behaviour):
+
+1. Execute the initial generated code.
+2. If success or unrecoverable → stop.
+3. If recoverable → classify the failure type, build a repair instruction,
+   re-generate code with modified context (within the same template family),
+   re-validate imports and sandbox policy, re-execute.
+4. Maximum 2 repair attempts (so at most 3 total executions).
+5. Record every attempt (success, failure, repair instruction) in history.
+
+Do not retry on:
+- import policy violation
+- syntax error
+- sandbox policy violation (suspicious patterns)
+- timeout without partial artifacts
+- repeated timeouts
+
+Codegen inputs (profile, route, plan, input_file_path) are required for
+repair-based re-generation.  When omitted, the runner falls back to same-code
+retry (backward-compatible with test code that only passes code + artifact_dir).
 """
 from __future__ import annotations
 
@@ -19,7 +31,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend.services.evaluator import ExecutionEvaluation, classify_execution
+from backend.services.codegen import RepairInstruction, apply_codegen_repair
+from backend.services.evaluator import (
+    ExecutionEvaluation,
+    classify_execution,
+    classify_failure_type,
+)
 from backend.services.sandbox_runner import (
     SandboxResult,
     create_run_directory,
@@ -28,34 +45,39 @@ from backend.services.sandbox_runner import (
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 2  # Maximum additional attempts after the initial failure.
+MAX_REPAIRS = 2  # Maximum repair-and-retry attempts after the initial execution.
+MAX_RETRIES = MAX_REPAIRS  # Alias kept for backward compatibility.
 
 
 @dataclass
 class RetryAttempt:
-    """Log entry for a single execution attempt within the retry loop."""
+    """Log entry for a single execution attempt within the repair loop."""
 
     attempt: int  # 1-indexed
     execution: SandboxResult
     evaluation: ExecutionEvaluation
-    reason: str  # Why this attempt was made (e.g. "initial", "retry 1 — recoverable")
+    reason: str
+    repair_instruction: RepairInstruction | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "attempt": self.attempt,
             "execution": self.execution.to_dict(),
             "evaluation": self.evaluation.to_dict(),
             "reason": self.reason,
         }
+        if self.repair_instruction is not None:
+            d["repair_instruction"] = self.repair_instruction.to_dict()
+        return d
 
 
 @dataclass
 class RetryResult:
-    """Outcome of the full bounded retry loop."""
+    """Outcome of the full bounded repair loop."""
 
     final_execution: SandboxResult
     final_evaluation: ExecutionEvaluation
-    retry_count: int  # Number of retries performed (0 = succeeded on first try)
+    retry_count: int  # Number of repair attempts performed (0 = succeeded on first try)
     retry_history: list[RetryAttempt] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,32 +93,42 @@ def run_with_retry(
     code: str,
     artifact_dir: Path,
     *,
-    max_retries: int = MAX_RETRIES,
+    # Codegen inputs — required for repair-based re-generation.
+    # When omitted the runner falls back to same-code retry.
+    profile: dict | None = None,
+    route: dict | None = None,
+    plan: dict | None = None,
+    input_file_path: Path | None = None,
+    max_retries: int = MAX_REPAIRS,
     timeout_seconds: int = 10,
     memory_limit_mb: int = 512,
 ) -> RetryResult:
-    """Execute *code* in the sandbox, retrying up to *max_retries* times on
-    recoverable failures.
+    """Execute *code* in the sandbox, applying bounded repairs on recoverable failures.
 
-    Returns a ``RetryResult`` with the full attempt history.  The caller
-    receives the same ``run_id`` and ``artifact_dir`` from the *first*
-    successful (or final) attempt — subsequent retries use their own fresh
-    run directories so artifacts are never mixed.
+    When *profile*, *route*, *plan*, and *input_file_path* are all provided,
+    failures trigger deterministic code repairs (modified codegen context) before
+    re-execution.  Otherwise same-code retry is used as a fallback.
 
     Args:
-        code: The Python source to execute.
-        artifact_dir: Artifact directory for the *primary* run (attempt 1).
-        max_retries: Maximum number of additional attempts (default 2).
+        code: Initially generated Python source.
+        artifact_dir: Artifact directory for the primary run (attempt 1).
+        profile: Dataset profile dict (for repair re-generation).
+        route: Dataset route dict (for repair re-generation).
+        plan: Analysis plan dict (for repair re-generation).
+        input_file_path: Path to the execution input CSV (for repair re-generation).
+        max_retries: Maximum repair attempts after the initial execution (default 2).
         timeout_seconds: Per-attempt timeout forwarded to the sandbox.
         memory_limit_mb: Per-attempt memory limit forwarded to the sandbox.
     """
     history: list[RetryAttempt] = []
-    retry_count = 0
+    repair_count = 0
+    current_code = code
 
-    # Primary run directory is already created by the caller; subsequent retry
-    # runs need fresh directories so we track the primary run_id separately.
-    primary_run_dir = artifact_dir.parent  # run_dir is parent of artifact_dir
+    primary_run_dir = artifact_dir.parent
     primary_run_id = primary_run_dir.name
+
+    # Repair mode is available only when all codegen inputs are supplied.
+    repair_available = all(x is not None for x in (profile, route, plan, input_file_path))
 
     for attempt_number in range(1, max_retries + 2):  # 1 initial + max_retries
         if attempt_number == 1:
@@ -106,17 +138,16 @@ def run_with_retry(
             reason = "initial"
         else:
             run_id, run_dir, current_artifact_dir = create_run_directory()
-            reason = f"retry {retry_count} — recoverable failure on previous attempt"
 
         logger.info(
-            "retry_runner: attempt=%d run_id=%s reason=%s",
+            "repair_runner: attempt=%d run_id=%s reason=%s",
             attempt_number,
             run_id,
-            reason,
+            reason,  # defined before use in the loop
         )
 
         execution = execute_generated_code(
-            code=code,
+            code=current_code,
             run_id=run_id,
             run_dir=run_dir,
             artifact_dir=current_artifact_dir,
@@ -134,31 +165,60 @@ def run_with_retry(
         history.append(attempt)
 
         logger.info(
-            "retry_runner: attempt=%d outcome=%s note=%s",
+            "repair_runner: attempt=%d outcome=%s note=%s",
             attempt_number,
             evaluation.outcome,
             evaluation.note,
         )
 
         if evaluation.outcome in {"success", "unrecoverable"}:
-            # No point retrying.
             break
 
         if attempt_number > max_retries:
-            # Exhausted all allowed attempts.
             logger.warning(
-                "retry_runner: exhausted %d retries; final outcome=%s",
+                "repair_runner: exhausted %d repair(s); final outcome=%s",
                 max_retries,
                 evaluation.outcome,
             )
             break
 
-        retry_count += 1
+        # --- Attempt a repair -----------------------------------------------
+        repair_count += 1
+        repair_instruction: RepairInstruction | None = None
+
+        if repair_available:
+            failure_type = classify_failure_type(execution)
+            repair_result = apply_codegen_repair(
+                profile=profile,  # type: ignore[arg-type]
+                route=route,  # type: ignore[arg-type]
+                plan=plan,  # type: ignore[arg-type]
+                input_file_path=input_file_path,  # type: ignore[arg-type]
+                artifact_dir=current_artifact_dir,
+                failure_type=failure_type,
+                stderr=execution.stderr or "",
+                repair_attempt=repair_count,
+            )
+            if repair_result is not None:
+                repaired_code, repair_instruction = repair_result
+                current_code = repaired_code.code
+                reason = f"repair {repair_count}: {repair_instruction.repair_action}"
+                logger.info(
+                    "repair_runner: applied repair=%s description=%s",
+                    repair_instruction.repair_action,
+                    repair_instruction.description,
+                )
+                # Attach repair instruction to the *previous* attempt for auditability.
+                history[-1].repair_instruction = repair_instruction
+            else:
+                # No applicable repair; fall back to same-code retry.
+                reason = f"retry {repair_count} — no repair available (recoverable)"
+        else:
+            reason = f"retry {repair_count} — recoverable failure on previous attempt"
 
     final_attempt = history[-1]
     return RetryResult(
         final_execution=final_attempt.execution,
         final_evaluation=final_attempt.evaluation,
-        retry_count=retry_count,
+        retry_count=repair_count,
         retry_history=history,
     )

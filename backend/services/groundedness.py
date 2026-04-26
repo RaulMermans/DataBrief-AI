@@ -1,65 +1,136 @@
-"""Groundedness evaluator.
+"""Groundedness evaluator — claim/evidence model.
 
-Single-pass revision of a ``ReportPayload`` that removes or rewrites claims
-that cannot be traced to the supplied ``computed_facts`` dict.
+Every numeric or statistical claim in the report is converted into a
+``GroundedClaim`` object that references a specific field in ``computed_facts``
+(which contains summary.json content + profile metadata).
 
-Rules (deterministic, no model calls):
-- ``executive_summary``: keep only sentences that contain at least one token
-  from the computed facts (numeric values, column names, dataset_type).
-  If all sentences are removed, replace with a safe fallback.
-- ``business_recommendations``: remove items that contain the sentinel
-  ``_UNSUPPORTED`` marker or that reference column names / KPI labels not
-  present in computed facts.
-- All other sections are left unchanged (they are already sourced from
-  computed data by the report generator).
-- The revision is performed at most once.  The result is marked
-  ``revised=True`` and ``revision_note`` is populated.
+Claim statuses:
+- ``supported``   — the claim's value or label is traceable to a named source.
+- ``unsupported`` — the claim contains the ``_UNSUPPORTED`` sentinel or
+                    references no known computed fact.
+- ``uncertain``   — the claim appears relevant but source evidence is weak.
+
+The ``check_and_revise`` function:
+1. Extracts claims from each report section.
+2. Classifies each claim as supported / unsupported / uncertain.
+3. Removes unsupported claims from the report (single pass, max 1 revision).
+4. Attaches the claim list to the report for auditability.
+
+No model calls are made; all logic is deterministic.
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import Any
 
 from backend.services.report_generator import ReportPayload
 
-# Sentinel placed by the report generator for unpopulated claims.
 _UNSUPPORTED = "[UNSUPPORTED — no computed data]"
+
+
+# ---------------------------------------------------------------------------
+# GroundedClaim — the structured unit of groundedness evaluation
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GroundedClaim:
+    claim: str
+    claim_type: str   # "kpi" | "finding" | "summary" | "recommendation" | "warning"
+    source: str       # e.g. "summary.json:kpis.Total revenue"
+    status: str       # "supported" | "unsupported" | "uncertain"
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "claim": self.claim,
+            "claim_type": self.claim_type,
+            "source": self.source,
+            "status": self.status,
+            "reason": self.reason,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
 
 
 def check_and_revise(report: ReportPayload, computed_facts: dict) -> ReportPayload:
     """Validate and revise *report* in a single deterministic pass.
 
-    ``computed_facts`` should contain the keys/values from summary.json:
-    ``kpis``, ``numeric_summary``, ``category_summary``, ``row_count``,
-    ``column_count``, ``duplicate_rows``.  The profile dict is also accepted.
+    ``computed_facts`` should contain keys from summary.json (``kpis``,
+    ``numeric_summary``, ``category_summary``, ``row_count``, ``column_count``,
+    ``duplicate_rows``) plus profile metadata.
 
-    Returns the (possibly revised) ``ReportPayload`` with ``revised`` and
-    ``revision_note`` populated.
+    Returns the (possibly revised) ``ReportPayload`` with ``revised``,
+    ``revision_note``, and ``claims`` populated.
     """
     if report.is_partial:
-        # Partial reports have no computed facts to validate against; leave as-is.
         return report
 
-    # Build a set of known fact tokens: KPI labels, column names, numeric values.
-    known_tokens = _build_known_tokens(computed_facts)
-
+    evidence = _build_evidence_index(computed_facts)
+    claims: list[GroundedClaim] = []
     changes: list[str] = []
 
-    # --- Revise executive_summary ---
+    # --- KPI cards: each card references summary.json:kpis.<label> ----------
+    for card in report.kpi_cards:
+        source = f"summary.json:kpis.{card.label}"
+        if card.label in computed_facts.get("kpis", {}):
+            claims.append(GroundedClaim(
+                claim=f"{card.label} = {card.value}",
+                claim_type="kpi",
+                source=source,
+                status="supported",
+                reason="Label and value found in summary.json:kpis",
+            ))
+        else:
+            claims.append(GroundedClaim(
+                claim=f"{card.label} = {card.value}",
+                claim_type="kpi",
+                source=source,
+                status="uncertain",
+                reason="KPI label not in computed kpis dict (may be from profile)",
+            ))
+
+    # --- Top findings: sourced from numeric/category summaries --------------
+    for finding in report.top_findings:
+        src = finding.source  # e.g. "summary.json:numeric_summary:revenue"
+        status, reason = _evaluate_finding_source(src, computed_facts)
+        claims.append(GroundedClaim(
+            claim=finding.description,
+            claim_type="finding",
+            source=src,
+            status=status,
+            reason=reason,
+        ))
+
+    # --- Executive summary: sentence-level claim extraction -----------------
     original_summary = report.executive_summary
-    revised_summary = _revise_summary(original_summary, known_tokens)
+    revised_summary, summary_claims = _revise_and_extract_summary(
+        original_summary, evidence
+    )
+    claims.extend(summary_claims)
     if revised_summary != original_summary:
         changes.append("executive_summary revised: removed unsupported sentences")
     report.executive_summary = revised_summary
 
-    # --- Revise business_recommendations ---
+    # --- Business recommendations -------------------------------------------
     original_recs = list(report.business_recommendations)
-    revised_recs = _revise_recommendations(original_recs, known_tokens)
+    revised_recs, rec_claims = _revise_and_extract_recommendations(
+        original_recs, evidence
+    )
+    claims.extend(rec_claims)
     removed_count = len(original_recs) - len(revised_recs)
     if removed_count > 0:
         changes.append(
             f"business_recommendations revised: removed {removed_count} unsupported item(s)"
         )
     report.business_recommendations = revised_recs
+
+    # --- Attach claims to report --------------------------------------------
+    report.claims = [c.to_dict() for c in claims]
 
     if changes:
         report.revised = True
@@ -72,86 +143,176 @@ def check_and_revise(report: ReportPayload, computed_facts: dict) -> ReportPaylo
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Evidence index
 # ---------------------------------------------------------------------------
 
 
-def _build_known_tokens(computed_facts: dict) -> set[str]:
-    """Extract a set of lower-cased strings that represent known computed facts."""
-    tokens: set[str] = set()
+def _build_evidence_index(computed_facts: dict) -> dict[str, str]:
+    """Build a flat dict mapping token → source path for known computed facts."""
+    index: dict[str, str] = {}
 
-    # Row/column counts
     for key in ("row_count", "column_count", "duplicate_rows"):
-        value = computed_facts.get(key)
-        if value is not None:
-            tokens.add(str(value).lower())
+        val = computed_facts.get(key)
+        if val is not None:
+            index[str(val).lower()] = f"profile:{key}"
 
-    # KPI labels and values
     for label, value in computed_facts.get("kpis", {}).items():
-        tokens.add(label.lower())
-        tokens.add(str(value).lower())
+        index[label.lower()] = f"summary.json:kpis.{label}"
+        index[str(value).lower()] = f"summary.json:kpis.{label}"
 
-    # Column names from numeric_summary
     for col in computed_facts.get("numeric_summary", {}):
-        tokens.add(col.lower())
+        index[col.lower()] = f"summary.json:numeric_summary.{col}"
 
-    # Column names from category_summary
     for col in computed_facts.get("category_summary", {}):
-        tokens.add(col.lower())
+        index[col.lower()] = f"summary.json:category_summary.{col}"
 
-    # Dataset type
-    for key in ("dataset_type",):
-        value = computed_facts.get(key)
-        if value:
-            tokens.add(str(value).lower())
+    dataset_type = computed_facts.get("dataset_type")
+    if dataset_type:
+        index[str(dataset_type).lower()] = "profile:dataset_type"
 
-    # Generic high-value tokens always considered grounded
-    tokens.update({"rows", "columns", "duplicate", "missing", "cells", "chart", "artifact"})
+    # Generic structural tokens always considered grounded — they describe
+    # shape, not computed values, so no specific source is required.
+    for generic in ("rows", "columns", "duplicate", "missing", "cells", "chart", "artifact"):
+        index[generic] = "profile:structural"
 
-    return tokens
-
-
-def _sentence_is_grounded(sentence: str, known_tokens: set[str]) -> bool:
-    """Return True if *sentence* contains at least one known fact token."""
-    sentence_lower = sentence.lower()
-    # Extract all word/number tokens from the sentence.
-    candidate_tokens = set(re.findall(r"[\w.]+", sentence_lower))
-    return bool(candidate_tokens & known_tokens)
+    return index
 
 
-def _revise_summary(summary: str, known_tokens: set[str]) -> str:
-    """Keep only grounded sentences from *summary*."""
+def _evaluate_finding_source(
+    source: str, computed_facts: dict
+) -> tuple[str, str]:
+    """Return (status, reason) for a finding given its declared source path."""
+    if source.startswith("summary.json:numeric_summary:"):
+        col = source.split(":", 2)[-1]
+        if col in computed_facts.get("numeric_summary", {}):
+            return "supported", f"Column '{col}' present in summary.json:numeric_summary"
+        return "unsupported", f"Column '{col}' not found in numeric_summary"
+
+    if source.startswith("summary.json:category_summary:"):
+        col = source.split(":", 2)[-1]
+        if col in computed_facts.get("category_summary", {}):
+            return "supported", f"Column '{col}' present in summary.json:category_summary"
+        return "unsupported", f"Column '{col}' not found in category_summary"
+
+    if source.startswith("summary.json:kpis"):
+        return "supported", "KPI sourced from summary.json:kpis"
+
+    return "uncertain", f"Source '{source}' could not be verified against computed_facts"
+
+
+# ---------------------------------------------------------------------------
+# Summary revision
+# ---------------------------------------------------------------------------
+
+
+def _revise_and_extract_summary(
+    summary: str, evidence: dict[str, str]
+) -> tuple[str, list[GroundedClaim]]:
+    claims: list[GroundedClaim] = []
+
     if _UNSUPPORTED in summary:
-        return (
-            "The executive summary could not be generated from computed outputs."
-        )
+        claims.append(GroundedClaim(
+            claim=summary[:120],
+            claim_type="summary",
+            source="none",
+            status="unsupported",
+            reason="Contains _UNSUPPORTED sentinel",
+        ))
+        fallback = "The executive summary could not be generated from computed outputs."
+        return fallback, claims
 
-    # Split on sentence boundaries (period + space, or end of string).
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", summary) if s.strip()]
-    grounded = [s for s in sentences if _sentence_is_grounded(s, known_tokens)]
+    kept: list[str] = []
+    for sentence in sentences:
+        source, is_grounded = _sentence_source(sentence, evidence)
+        if is_grounded:
+            claims.append(GroundedClaim(
+                claim=sentence,
+                claim_type="summary",
+                source=source,
+                status="supported",
+                reason="Sentence contains a token traceable to computed facts",
+            ))
+            kept.append(sentence)
+        else:
+            claims.append(GroundedClaim(
+                claim=sentence,
+                claim_type="summary",
+                source="none",
+                status="unsupported",
+                reason="No computed-fact token found in sentence",
+            ))
 
-    if not grounded:
+    if not kept:
         return (
             "The executive summary could not be verified against computed outputs "
-            "and has been removed."
+            "and has been removed.",
+            claims,
         )
-    return " ".join(grounded)
+    return " ".join(kept), claims
 
 
-def _revise_recommendations(
-    recommendations: list[str], known_tokens: set[str]
-) -> list[str]:
-    """Remove recommendations containing the unsupported sentinel or that
-    reference no known tokens at all."""
+def _sentence_source(sentence: str, evidence: dict[str, str]) -> tuple[str, bool]:
+    """Return (source_path, grounded) for a sentence."""
+    tokens = set(re.findall(r"[\w.]+", sentence.lower()))
+    for token in tokens:
+        if token in evidence:
+            return evidence[token], True
+    return "none", False
+
+
+# ---------------------------------------------------------------------------
+# Recommendation revision
+# ---------------------------------------------------------------------------
+
+
+def _revise_and_extract_recommendations(
+    recommendations: list[str], evidence: dict[str, str]
+) -> tuple[list[str], list[GroundedClaim]]:
     kept: list[str] = []
+    claims: list[GroundedClaim] = []
+
     for rec in recommendations:
         if _UNSUPPORTED in rec:
+            claims.append(GroundedClaim(
+                claim=rec[:120],
+                claim_type="recommendation",
+                source="none",
+                status="unsupported",
+                reason="Contains _UNSUPPORTED sentinel",
+            ))
             continue
-        # Allow investigation suggestions — they reference plan questions which
-        # are generic business questions, not invented facts.
+
         if rec.lower().startswith("investigate:"):
+            # Investigation suggestions reference plan questions — allow without
+            # requiring a direct computed-fact match.
+            claims.append(GroundedClaim(
+                claim=rec,
+                claim_type="recommendation",
+                source="plan:business_questions",
+                status="uncertain",
+                reason="Investigation suggestion from analysis plan (not a computed fact)",
+            ))
             kept.append(rec)
             continue
-        if _sentence_is_grounded(rec, known_tokens):
+
+        source, is_grounded = _sentence_source(rec, evidence)
+        if is_grounded:
+            claims.append(GroundedClaim(
+                claim=rec,
+                claim_type="recommendation",
+                source=source,
+                status="supported",
+                reason="Recommendation references a computed fact token",
+            ))
             kept.append(rec)
-    return kept
+        else:
+            claims.append(GroundedClaim(
+                claim=rec,
+                claim_type="recommendation",
+                source="none",
+                status="unsupported",
+                reason="No computed-fact token found in recommendation",
+            ))
+
+    return kept, claims

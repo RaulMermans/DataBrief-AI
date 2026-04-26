@@ -26,7 +26,80 @@ _UNRECOVERABLE_MARKERS = (
     "syntax error",
     "SyntaxError",
     "has a syntax error",
+    "not allowed in sandbox execution",  # from validate_suspicious_patterns
 )
+
+# ---------------------------------------------------------------------------
+# Specific failure-type constants (used by the repair runner)
+# ---------------------------------------------------------------------------
+FAILURE_NONE = "none"
+FAILURE_MISSING_COLUMN = "missing_column"
+FAILURE_DATE_PARSING = "date_parsing"
+FAILURE_CHART_ERROR = "chart_error"
+FAILURE_NUMERIC_ERROR = "numeric_error"
+FAILURE_EMPTY_OUTPUT = "empty_output"
+FAILURE_IMPORT_POLICY = "import_policy"
+FAILURE_SYNTAX_ERROR = "syntax_error"
+FAILURE_TIMEOUT = "timeout"
+FAILURE_GENERIC_RUNTIME = "generic_runtime"
+
+
+def classify_failure_type(result: SandboxResult) -> str:
+    """Return a granular failure-type string for use in repair decisions.
+
+    Deterministic — no model calls.  Inspects error message and stderr to
+    distinguish between specific failure modes so the repair runner can apply
+    the most targeted fix.
+    """
+    if result.status == "success" and result.exit_code == 0:
+        return FAILURE_NONE
+
+    combined = " ".join(filter(None, [result.error or "", result.stderr or ""]))
+    combined_lower = combined.lower()
+
+    if "not on the approved list" in combined_lower or "not allowed in sandbox" in combined_lower:
+        return FAILURE_IMPORT_POLICY
+
+    if "syntax error" in combined_lower or "syntaxerror" in combined_lower:
+        return FAILURE_SYNTAX_ERROR
+
+    if result.timed_out:
+        return FAILURE_TIMEOUT
+
+    if "keyerror" in combined_lower:
+        return FAILURE_MISSING_COLUMN
+
+    if (
+        "date" in combined_lower
+        or "strptime" in combined_lower
+        or "isoformat" in combined_lower
+        or "fromisoformat" in combined_lower
+    ):
+        return FAILURE_DATE_PARSING
+
+    if (
+        "svg" in combined_lower
+        or "write_bar_svg" in combined_lower
+        or "write_line_svg" in combined_lower
+        or "write_histogram" in combined_lower
+        or "write_category" in combined_lower
+        or "write_time" in combined_lower
+        or "write_missing_chart" in combined_lower
+    ):
+        return FAILURE_CHART_ERROR
+
+    if "valueerror" in combined_lower and (
+        "float" in combined_lower or "int(" in combined_lower or "convert" in combined_lower
+    ):
+        return FAILURE_NUMERIC_ERROR
+
+    # Execution succeeded (exit 0) but produced no summary.json
+    if result.exit_code == 0 and not any(
+        a.name == "summary.json" for a in result.artifacts
+    ):
+        return FAILURE_EMPTY_OUTPUT
+
+    return FAILURE_GENERIC_RUNTIME
 
 
 @dataclass(frozen=True)

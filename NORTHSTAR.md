@@ -39,7 +39,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - demoable in under 2 minutes
 
 ## Current active phase
-**PHASE_6_EXPORTS_AND_POLISH**
+**PHASE_6_EXPORTS_AND_POLISH** (backend exports done; frontend wiring pending)
 
 ## Phase index
 - `PHASE_1_FOUNDATION`
@@ -221,7 +221,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 ---
 
 # PHASE_6_EXPORTS_AND_POLISH
-**Status:** NOT_STARTED
+**Status:** IN_PROGRESS
 
 ## Scope
 - report export
@@ -240,13 +240,16 @@ Stay a **bounded workflow**, not an open-ended agent.
 - error states are understandable
 
 ## Checklist
-- [ ] report export
-- [ ] JSON export
-- [ ] Python export
-- [ ] visual polish
-- [ ] progress UI
+- [x] report export (GET /api/runs/{run_id}/export/report.md)
+- [x] JSON export (GET /api/runs/{run_id}/export/findings.json)
+- [x] Python export (GET /api/runs/{run_id}/export/analysis.py)
+- [ ] visual polish (frontend not yet updated for exports)
+- [ ] progress UI (run_id returned; frontend polling not yet wired)
 - [ ] improved errors
 - [ ] demo flow
+
+## Progress log
+- 2026-04-26: Implemented P0–P1 hardening: removed absolute paths from API responses, added TTL cleanup, strengthened sandbox AST checks (eval/exec/os.system/absolute paths), added summary.json schema validation, replaced replay-only retry with bounded repair runner (classifies failure type, modifies codegen context, max 2 repairs), replaced token-overlap groundedness with claim/evidence model (GroundedClaim with source/status/reason), added SQLite run metadata store (RunStore), added export endpoints (report.md, findings.json, analysis.py), added run status endpoint. 124 tests passing.
 
 ---
 

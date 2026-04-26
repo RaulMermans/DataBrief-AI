@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,12 +33,31 @@ class GeneratedCode:
         }
 
 
+@dataclass(frozen=True)
+class RepairInstruction:
+    """Structured description of the repair applied to a failed codegen attempt."""
+
+    failure_type: str
+    repair_action: str   # "skip_charts" | "skip_date_analysis" | "minimal_mode" | "none"
+    description: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "failure_type": self.failure_type,
+            "repair_action": self.repair_action,
+            "description": self.description,
+        }
+
+
 def generate_python_script(
     profile: dict[str, Any],
     route: dict[str, Any],
     plan: dict[str, Any],
     input_file_path: str | Path,
     artifact_dir: str | Path,
+    *,
+    skip_charts: bool = False,
+    skip_date_analysis: bool = False,
 ) -> GeneratedCode:
     dataset_type = route.get("dataset_type", "generic")
     if dataset_type not in {"sales", "generic"}:
@@ -50,9 +70,11 @@ def generate_python_script(
         for column, inferred_type in inferred_types.items()
         if inferred_type in {"integer", "number"}
     ]
-    date_columns = [
-        column for column, inferred_type in inferred_types.items() if inferred_type == "date"
-    ]
+    date_columns = (
+        []
+        if skip_date_analysis
+        else [column for column, inferred_type in inferred_types.items() if inferred_type == "date"]
+    )
     category_columns = [
         column
         for column, inferred_type in inferred_types.items()
@@ -69,12 +91,96 @@ def generate_python_script(
         "plan_charts": plan.get("recommended_charts", []),
         "input_file_path": str(input_file_path),
         "artifact_dir": str(artifact_dir),
+        "skip_charts": 1 if skip_charts else 0,
     }
 
     return GeneratedCode(
         code=_SCRIPT_TEMPLATE.replace("__CONTEXT_JSON__", json.dumps(context, indent=2)),
         allowed_imports=sorted(ALLOWED_STDLIB_IMPORTS | ALLOWED_EXTERNAL_LIBRARIES),
     )
+
+
+# ---------------------------------------------------------------------------
+# Repair: deterministic code-repair based on failure type
+# ---------------------------------------------------------------------------
+
+# Do not repair these failure types — retrying will not help.
+_UNRECOVERABLE_FOR_REPAIR: frozenset[str] = frozenset(
+    {"import_policy", "syntax_error", "timeout", "none"}
+)
+
+# Map: repair number → (repair_action, skip_charts, skip_date_analysis)
+_REPAIR_SEQUENCE: list[tuple[str, bool, bool]] = [
+    ("skip_charts", True, False),       # repair 1: skip chart generation
+    ("minimal_mode", True, True),       # repair 2: skip charts + date analysis
+]
+
+
+def apply_codegen_repair(
+    profile: dict[str, Any],
+    route: dict[str, Any],
+    plan: dict[str, Any],
+    input_file_path: str | Path,
+    artifact_dir: str | Path,
+    failure_type: str,
+    stderr: str,
+    repair_attempt: int,
+) -> tuple[GeneratedCode, RepairInstruction] | None:
+    """Produce a repaired code variant based on *failure_type*.
+
+    Returns ``(GeneratedCode, RepairInstruction)`` if a repair is applicable,
+    or ``None`` if the failure is unrecoverable or no further repairs are available.
+
+    Args:
+        repair_attempt: 1-indexed repair number (1 = first repair, 2 = second).
+    """
+    if failure_type in _UNRECOVERABLE_FOR_REPAIR:
+        return None
+
+    repair_index = repair_attempt - 1
+    if repair_index >= len(_REPAIR_SEQUENCE):
+        return None
+
+    repair_action, skip_charts, skip_date_analysis = _REPAIR_SEQUENCE[repair_index]
+
+    # For missing_column failures, also try to remove the offending column.
+    modified_profile = dict(profile)
+    if failure_type == "missing_column":
+        bad_column = _extract_keyerror_column(stderr)
+        if bad_column:
+            inferred = dict(modified_profile.get("inferred_types", {}))
+            inferred.pop(bad_column, None)
+            modified_profile = {**modified_profile, "inferred_types": inferred}
+            description = f"Removed column '{bad_column}' that caused KeyError; {repair_action}"
+        else:
+            description = f"Repair {repair_attempt}: {repair_action}"
+    elif failure_type == "date_parsing":
+        # Force date analysis off regardless of repair sequence position
+        skip_date_analysis = True
+        description = f"Disabled date analysis that caused parsing error; {repair_action}"
+    else:
+        description = f"Repair {repair_attempt}: {repair_action} (failure={failure_type})"
+
+    code = generate_python_script(
+        modified_profile,
+        route,
+        plan,
+        input_file_path,
+        artifact_dir,
+        skip_charts=skip_charts,
+        skip_date_analysis=skip_date_analysis,
+    )
+    return code, RepairInstruction(
+        failure_type=failure_type,
+        repair_action=repair_action,
+        description=description,
+    )
+
+
+def _extract_keyerror_column(stderr: str) -> str | None:
+    """Try to extract the column name from a KeyError traceback."""
+    match = re.search(r"KeyError: ['\"]([^'\"]+)['\"]", stderr)
+    return match.group(1) if match else None
 
 
 _SCRIPT_TEMPLATE = r'''import csv
@@ -96,6 +202,7 @@ CONTEXT = __CONTEXT_JSON__
 INPUT_FILE = Path(CONTEXT["input_file_path"])
 ARTIFACT_DIR = Path(CONTEXT["artifact_dir"])
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+SKIP_CHARTS = bool(CONTEXT.get("skip_charts", False))
 
 
 def main():
@@ -139,29 +246,30 @@ def main():
     write_summary_table(ARTIFACT_DIR / "summary_table.csv", kpis)
 
     chart_count = 0
-    chart_count += write_missing_chart(ARTIFACT_DIR / "missing_values.svg", missing)
-    if numeric_columns:
-        chart_count += write_histogram_chart(
-            ARTIFACT_DIR / f"histogram_{safe_name(numeric_columns[0])}.svg",
-            cleaned_rows,
-            numeric_columns[0],
-        )
-    if category_columns:
-        metric_column = pick_sales_measure(columns, numeric_columns) or (numeric_columns[0] if numeric_columns else None)
-        chart_count += write_category_chart(
-            ARTIFACT_DIR / f"category_{safe_name(category_columns[0])}.svg",
-            cleaned_rows,
-            category_columns[0],
-            metric_column,
-        )
-    if date_columns and numeric_columns:
-        metric_column = pick_sales_measure(columns, numeric_columns) or numeric_columns[0]
-        chart_count += write_time_chart(
-            ARTIFACT_DIR / f"time_{safe_name(metric_column)}.svg",
-            cleaned_rows,
-            date_columns[0],
-            metric_column,
-        )
+    if not SKIP_CHARTS:
+        chart_count += write_missing_chart(ARTIFACT_DIR / "missing_values.svg", missing)
+        if numeric_columns:
+            chart_count += write_histogram_chart(
+                ARTIFACT_DIR / f"histogram_{safe_name(numeric_columns[0])}.svg",
+                cleaned_rows,
+                numeric_columns[0],
+            )
+        if category_columns:
+            metric_column = pick_sales_measure(columns, numeric_columns) or (numeric_columns[0] if numeric_columns else None)
+            chart_count += write_category_chart(
+                ARTIFACT_DIR / f"category_{safe_name(category_columns[0])}.svg",
+                cleaned_rows,
+                category_columns[0],
+                metric_column,
+            )
+        if date_columns and numeric_columns:
+            metric_column = pick_sales_measure(columns, numeric_columns) or numeric_columns[0]
+            chart_count += write_time_chart(
+                ARTIFACT_DIR / f"time_{safe_name(metric_column)}.svg",
+                cleaned_rows,
+                date_columns[0],
+                metric_column,
+            )
 
     print(f"Processed {len(cleaned_rows)} rows and {len(columns)} columns.")
     print(f"Saved {chart_count} chart artifact(s) to {ARTIFACT_DIR}.")
