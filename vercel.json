@@ -1,0 +1,16 @@
+{
+  "services": [
+    {
+      "entrypoint": ".",
+      "framework": "nextjs",
+      "routePrefix": "/"
+    },
+    {
+      "entrypoint": "backend/main.py",
+      "framework": "fastapi",
+      "routePrefix": "/backend",
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  ]
+}
