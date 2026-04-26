@@ -1,6 +1,6 @@
 """Tests for backend.services.evaluator."""
-from backend.services.evaluator import classify_execution
-from backend.services.sandbox_runner import ArtifactMetadata, SandboxResult
+from services.evaluator import classify_execution
+from services.sandbox_runner import ArtifactMetadata, SandboxResult
 
 
 def _make_result(**overrides) -> SandboxResult:

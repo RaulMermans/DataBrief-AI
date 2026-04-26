@@ -1,5 +1,0 @@
-ticket_id,created_date,priority,status,response_hours
-T-1001,2026-01-01,high,open,4
-T-1002,2026-01-02,medium,closed,12
-T-1003,2026-01-03,low,closed,24
-T-1004,2026-01-04,high,pending,

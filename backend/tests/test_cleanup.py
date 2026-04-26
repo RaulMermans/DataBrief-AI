@@ -2,12 +2,12 @@
 import time
 from pathlib import Path
 
-from backend.services.sandbox_runner import RUN_ROOT, cleanup_expired_runs, create_run_directory
+from services.sandbox_runner import RUN_ROOT, cleanup_expired_runs, create_run_directory
 
 
 def test_cleanup_removes_old_run_dirs(tmp_path: Path, monkeypatch):
     """Directories older than TTL should be deleted."""
-    monkeypatch.setattr("backend.services.sandbox_runner.RUN_ROOT", tmp_path)
+    monkeypatch.setattr("services.sandbox_runner.RUN_ROOT", tmp_path)
 
     # Create a fresh dir — should NOT be cleaned up.
     fresh = tmp_path / "fresh-run"
@@ -28,7 +28,7 @@ def test_cleanup_removes_old_run_dirs(tmp_path: Path, monkeypatch):
 
 
 def test_cleanup_zero_when_nothing_expired(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("backend.services.sandbox_runner.RUN_ROOT", tmp_path)
+    monkeypatch.setattr("services.sandbox_runner.RUN_ROOT", tmp_path)
 
     fresh = tmp_path / "fresh-run"
     fresh.mkdir()
@@ -40,14 +40,14 @@ def test_cleanup_zero_when_nothing_expired(tmp_path: Path, monkeypatch):
 
 def test_cleanup_returns_zero_when_root_missing(tmp_path: Path, monkeypatch):
     absent = tmp_path / "does-not-exist"
-    monkeypatch.setattr("backend.services.sandbox_runner.RUN_ROOT", absent)
+    monkeypatch.setattr("services.sandbox_runner.RUN_ROOT", absent)
 
     deleted = cleanup_expired_runs(ttl_hours=1)
     assert deleted == 0
 
 
 def test_cleanup_ignores_files_not_dirs(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("backend.services.sandbox_runner.RUN_ROOT", tmp_path)
+    monkeypatch.setattr("services.sandbox_runner.RUN_ROOT", tmp_path)
 
     stale_file = tmp_path / "leftover.json"
     stale_file.write_text("{}")

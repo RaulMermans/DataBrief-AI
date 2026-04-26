@@ -1,4 +1,4 @@
-from backend.services.planner import generate_analysis_plan
+from services.planner import generate_analysis_plan
 
 
 def test_generate_sales_plan_is_structured_and_grounded() -> None:

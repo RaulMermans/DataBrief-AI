@@ -1,7 +1,7 @@
 """Tests for backend.services.report_generator."""
-from backend.services.evaluator import ExecutionEvaluation
-from backend.services.report_generator import ReportPayload, generate_report
-from backend.services.sandbox_runner import ArtifactMetadata, SandboxResult
+from services.evaluator import ExecutionEvaluation
+from services.report_generator import ReportPayload, generate_report
+from services.sandbox_runner import ArtifactMetadata, SandboxResult
 
 
 def _artifact(name: str, content_type: str = "application/json") -> ArtifactMetadata:

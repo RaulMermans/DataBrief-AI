@@ -1,13 +1,13 @@
 """Tests for claim/evidence-based groundedness model."""
 import pytest
-from backend.services.evaluator import ExecutionEvaluation
-from backend.services.groundedness import (
+from services.evaluator import ExecutionEvaluation
+from services.groundedness import (
     GroundedClaim,
     _build_evidence_index,
     check_and_revise,
 )
-from backend.services.report_generator import ReportPayload, generate_report
-from backend.services.sandbox_runner import SandboxResult
+from services.report_generator import ReportPayload, generate_report
+from services.sandbox_runner import SandboxResult
 
 _COMPUTED_FACTS = {
     "row_count": 100,

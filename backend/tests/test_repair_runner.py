@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from backend.services.codegen import apply_codegen_repair, generate_python_script
-from backend.services.evaluator import (
+from services.codegen import apply_codegen_repair, generate_python_script
+from services.evaluator import (
     FAILURE_CHART_ERROR,
     FAILURE_DATE_PARSING,
     FAILURE_IMPORT_POLICY,
@@ -13,8 +13,8 @@ from backend.services.evaluator import (
     FAILURE_TIMEOUT,
     classify_failure_type,
 )
-from backend.services.retry_runner import MAX_REPAIRS, RetryResult, run_with_retry
-from backend.services.sandbox_runner import ArtifactMetadata, SandboxResult, create_run_directory
+from services.retry_runner import MAX_REPAIRS, RetryResult, run_with_retry
+from services.sandbox_runner import ArtifactMetadata, SandboxResult, create_run_directory
 
 
 # ---------------------------------------------------------------------------

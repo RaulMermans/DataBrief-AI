@@ -1,9 +1,9 @@
 """Tests for backend.services.retry_runner."""
 from pathlib import Path
 
-from backend.services.codegen import generate_python_script
-from backend.services.retry_runner import MAX_RETRIES, RetryResult, run_with_retry
-from backend.services.sandbox_runner import create_run_directory
+from services.codegen import generate_python_script
+from services.retry_runner import MAX_RETRIES, RetryResult, run_with_retry
+from services.sandbox_runner import create_run_directory
 
 
 def _sales_csv(tmp_path: Path) -> Path:

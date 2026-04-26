@@ -3,7 +3,7 @@ from io import BytesIO
 import pytest
 from openpyxl import Workbook
 
-from backend.services.profiler import profile_csv, profile_xlsx
+from services.profiler import profile_csv, profile_xlsx
 
 
 def test_profile_csv_returns_core_dataset_profile() -> None:

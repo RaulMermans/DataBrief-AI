@@ -1,5 +1,5 @@
 """Tests for additional sandbox security checks beyond import allowlist."""
-from backend.services.sandbox_runner import (
+from services.sandbox_runner import (
     create_run_directory,
     execute_generated_code,
     validate_suspicious_patterns,

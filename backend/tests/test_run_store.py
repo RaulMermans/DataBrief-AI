@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.services.run_store import RunRecord, RunStatus, RunStore
+from services.run_store import RunRecord, RunStatus, RunStore
 
 
 def _store(tmp_path: Path) -> RunStore:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from backend.services.codegen import generate_python_script
-from backend.services.sandbox_runner import (
+from services.codegen import generate_python_script
+from services.sandbox_runner import (
     create_run_directory,
     execute_generated_code,
     validate_imports,

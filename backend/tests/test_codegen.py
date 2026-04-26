@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from backend.services.codegen import generate_python_script
+from services.codegen import generate_python_script
 
 
 def test_generate_python_script_has_expected_shape(tmp_path: Path) -> None:

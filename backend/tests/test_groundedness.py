@@ -1,8 +1,8 @@
 """Tests for backend.services.groundedness."""
-from backend.services.evaluator import ExecutionEvaluation
-from backend.services.groundedness import check_and_revise
-from backend.services.report_generator import ReportPayload, generate_report
-from backend.services.sandbox_runner import SandboxResult
+from services.evaluator import ExecutionEvaluation
+from services.groundedness import check_and_revise
+from services.report_generator import ReportPayload, generate_report
+from services.sandbox_runner import SandboxResult
 
 
 def _partial_report() -> ReportPayload:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from backend.services.profiler import profile_csv
-from backend.services.router import route_dataset
+from services.profiler import profile_csv
+from services.router import route_dataset
 
 
 def test_route_dataset_detects_sales() -> None:

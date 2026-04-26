@@ -1,6 +1,6 @@
 """Tests for backend.services.summary_validator."""
 import pytest
-from backend.services.summary_validator import is_summary_valid, validate_summary_json
+from services.summary_validator import is_summary_valid, validate_summary_json
 
 _VALID_SUMMARY = {
     "dataset_type": "sales",
