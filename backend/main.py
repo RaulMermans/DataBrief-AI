@@ -10,21 +10,21 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from openpyxl import load_workbook
 
-from backend.config import load_settings
-from backend.services.codegen import generate_python_script
-from backend.services.groundedness import check_and_revise
-from backend.services.planner import generate_analysis_plan
-from backend.services.profiler import profile_csv, profile_xlsx
-from backend.services.report_generator import generate_report, load_summary_json
-from backend.services.retry_runner import run_with_retry
-from backend.services.router import route_dataset
-from backend.services.run_store import RunStore, RunStatus
-from backend.services.sandbox_runner import (
+from config import load_settings
+from services.codegen import generate_python_script
+from services.groundedness import check_and_revise
+from services.planner import generate_analysis_plan
+from services.profiler import profile_csv, profile_xlsx
+from services.report_generator import generate_report, load_summary_json
+from services.retry_runner import run_with_retry
+from services.router import route_dataset
+from services.run_store import RunStore, RunStatus
+from services.sandbox_runner import (
     cleanup_expired_runs,
     create_run_directory,
     resolve_artifact_path,
 )
-from backend.services.summary_validator import validate_summary_json
+from services.summary_validator import validate_summary_json
 
 logger = logging.getLogger(__name__)
 

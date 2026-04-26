@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from backend.services.sandbox_runner import SandboxResult
+from services.sandbox_runner import SandboxResult
 
 
 # Keywords in the error field or stderr that indicate an unrecoverable failure.

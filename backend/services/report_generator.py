@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend.services.evaluator import ExecutionEvaluation
-from backend.services.sandbox_runner import ArtifactMetadata, SandboxResult
+from services.evaluator import ExecutionEvaluation
+from services.sandbox_runner import ArtifactMetadata, SandboxResult
 
 
 _UNSUPPORTED = "[UNSUPPORTED — no computed data]"

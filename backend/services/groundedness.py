@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from backend.services.report_generator import ReportPayload
+from services.report_generator import ReportPayload
 
 _UNSUPPORTED = "[UNSUPPORTED — no computed data]"
 
