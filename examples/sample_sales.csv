@@ -1,0 +1,5 @@
+order_date,customer,product,revenue,units,region
+2026-01-01,Ada Co,Widget,1200,12,North
+2026-01-02,Grace LLC,Gadget,850,5,South
+2026-01-03,Ada Co,Widget,1420,14,North
+2026-01-04,Turing Inc,Service Plan,600,1,West
