@@ -85,7 +85,7 @@ def test_revision_note_populated_when_no_changes():
 def test_grounded_report_from_generator_passes_check():
     """End-to-end: a report generated from a sales profile should pass
     groundedness validation without requiring revision."""
-    from backend.services.sandbox_runner import ArtifactMetadata
+    from services.sandbox_runner import ArtifactMetadata
     profile = {
         "row_count": 50,
         "column_count": 4,

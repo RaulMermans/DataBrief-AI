@@ -142,7 +142,7 @@ def test_claims_list_serialisable():
 
 
 def test_kpi_card_claims_present():
-    from backend.services.report_generator import KpiCard
+    from services.report_generator import KpiCard
     r = _full_report("Processed 100 rows.")
     r.kpi_cards = [
         KpiCard(label="Total revenue", value=50000, source="summary.json:kpis"),
