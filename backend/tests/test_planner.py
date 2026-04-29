@@ -38,3 +38,29 @@ def test_generate_generic_plan_is_structured() -> None:
     assert "Row count" in plan["likely_kpis"]
     assert len(plan["business_questions"]) == 5
     assert any("population" in item for item in plan["recommended_charts"])
+
+
+def test_generate_ecommerce_plan_prioritizes_business_kpis() -> None:
+    profile = {
+        "inferred_types": {
+            "order_id": "string",
+            "order_date": "date",
+            "category": "string",
+            "channel": "string",
+            "device": "string",
+            "status": "string",
+            "net_revenue": "number",
+            "gross_sales": "number",
+            "discount_amount": "number",
+            "quantity": "integer",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.92, "explanation": "test"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert plan["dataset_type"] == "ecommerce"
+    assert "Order count from order_id" in plan["likely_kpis"]
+    assert any("Average order value" in item for item in plan["likely_kpis"])
+    assert any("channel" in item.lower() for item in plan["recommended_charts"])
+    assert any("return" in item.lower() for item in plan["anomaly_checks"])

@@ -13,7 +13,7 @@ external network access in the analysis path.
 upload
   → validate file (CSV/XLSX, size limit)
   → profile dataset (types, missing, duplicates)
-  → route dataset type (sales | generic)
+  → route dataset type (sales | ecommerce | finance | generic)
   → generate analysis plan
   → generate Python from controlled template
   → validate code (AST import + suspicious-pattern checks)
@@ -34,8 +34,8 @@ upload
 | `backend/main.py` | HTTP boundary, request routing, lifespan hooks |
 | `backend/config.py` | Env-var settings with validation |
 | `backend/services/profiler.py` | Deterministic CSV/XLSX profiling |
-| `backend/services/router.py` | Deterministic sales/generic routing |
-| `backend/services/planner.py` | Deterministic sales/generic analysis plans |
+| `backend/services/router.py` | Deterministic sales/ecommerce/finance/generic routing |
+| `backend/services/planner.py` | Deterministic domain-specific analysis plans |
 | `backend/services/codegen.py` | Template-based Python generation + repair variants |
 | `backend/services/sandbox_runner.py` | Bounded subprocess execution, artifact metadata, cleanup |
 | `backend/services/evaluator.py` | Execution outcome + failure-type classification |
@@ -136,6 +136,10 @@ API responses **never expose host filesystem paths**.  `ArtifactMetadata`
 omits the internal `path` field; only `name`, `size_bytes`, `content_type`,
 and `url` are returned.
 
+Upload and workflow failures return structured JSON with `detail` and
+`error.code`. The frontend treats non-JSON hosting/proxy failures as backend
+limit failures instead of surfacing raw JSON parse errors.
+
 ## Security model
 
 - Uploads, model outputs, and generated code are treated as untrusted.
@@ -159,6 +163,9 @@ and `url` are returned.
 - The system does not support multi-user or concurrent access patterns.
 - Chart generation is SVG-only with a simple custom renderer (no matplotlib
   dependency in the sandbox template).
+- Demo deployments on Vercel remain subject to platform request-size, memory,
+  timeout, and ephemeral-filesystem limits. Large datasets should be reduced or
+  handled by a more durable backend deployment.
 
 ## Evaluation strategy
 

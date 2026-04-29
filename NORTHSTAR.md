@@ -243,14 +243,15 @@ Stay a **bounded workflow**, not an open-ended agent.
 - [x] report export (GET /api/runs/{run_id}/export/report.md)
 - [x] JSON export (GET /api/runs/{run_id}/export/findings.json)
 - [x] Python export (GET /api/runs/{run_id}/export/analysis.py)
-- [ ] visual polish (frontend not yet updated for exports)
+- [x] visual polish (sample rows and report priority improved)
 - [ ] progress UI (run_id returned; frontend polling not yet wired)
-- [ ] improved errors
+- [x] improved errors
 - [ ] demo flow
 
 ## Progress log
 - 2026-04-26: Implemented P0–P1 hardening: removed absolute paths from API responses, added TTL cleanup, strengthened sandbox AST checks (eval/exec/os.system/absolute paths), added summary.json schema validation, replaced replay-only retry with bounded repair runner (classifies failure type, modifies codegen context, max 2 repairs), replaced token-overlap groundedness with claim/evidence model (GroundedClaim with source/status/reason), added SQLite run metadata store (RunStore), added export endpoints (report.md, findings.json, analysis.py), added run status endpoint. 124 tests passing.
 - 2026-04-28: Fixed backend service-root startup compatibility for Vercel Services by removing remaining `backend.*` test imports and restoring the tracked retry runner module required by `main.py`. Backend `/health` smoke test passes under top-level `main.py` import semantics; 124 backend tests passing.
+- 2026-04-28: Polished Phase 6 failure and report quality paths: structured API errors, safer frontend upload parsing, deterministic ecommerce/finance routing, ecommerce-specific plans/KPIs/charts, business-first report ordering, grounded conditional recommendations, and readable sample-row tables.
 
 ---
 

@@ -17,13 +17,13 @@ type Profile = {
 };
 
 type DatasetRoute = {
-  dataset_type: "sales" | "generic";
+  dataset_type: "sales" | "ecommerce" | "finance" | "generic";
   confidence: number;
   explanation: string;
 };
 
 type AnalysisPlan = {
-  dataset_type: "sales" | "generic";
+  dataset_type: "sales" | "ecommerce" | "finance" | "generic";
   likely_kpis: string[];
   business_questions: string[];
   recommended_transformations: string[];
@@ -117,6 +117,15 @@ type UploadResponse = {
   report: ReportPayload;
 };
 
+type ApiErrorPayload = {
+  detail?: string;
+  error?: {
+    code?: string;
+    message?: string;
+    status?: number;
+  };
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -155,11 +164,11 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      const payload = await response.json();
+      const payload = await readUploadResponse(response);
       if (!response.ok) {
-        throw new Error(payload.detail ?? "Upload failed.");
+        throw new Error(formatUploadError(response.status, payload as ApiErrorPayload));
       }
-      setResult(payload);
+      setResult(payload as UploadResponse);
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
@@ -178,8 +187,8 @@ export default function Home() {
           <p className="eyebrow">DataBrief AI</p>
           <h1>Dataset analysis workflow</h1>
           <p className="lede">
-            Upload a CSV or XLSX to profile the data, route it as sales or
-            generic, generate a deterministic analysis plan, execute the
+            Upload a CSV or XLSX to profile the data, route it by domain,
+            generate a deterministic analysis plan, execute the
             analysis, and receive a grounded report.
           </p>
         </div>
@@ -200,6 +209,9 @@ export default function Home() {
             </button>
           </div>
         </form>
+        <p className="uploadHint">
+          CSV/XLSX only. Demo uploads are capped by the backend configuration.
+        </p>
 
         {error ? <div className="error">{error}</div> : null}
       </section>
@@ -291,8 +303,11 @@ export default function Home() {
 
           <section className="panel tablePanel">
             <h2>Sample rows</h2>
+            <p className="muted tableHint">
+              Showing the first {result.profile.sample_rows.length} profiled row(s).
+            </p>
             <div className="tableWrap">
-              <table>
+              <table className="sampleTable">
                 <thead>
                   <tr>
                     {columns.map((column) => (
@@ -398,6 +413,40 @@ export default function Home() {
       ) : null}
     </main>
   );
+}
+
+async function readUploadResponse(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  if (!response.ok) {
+    return {
+      detail: text.trim() || response.statusText || "Upload failed.",
+      error: { code: "non_json_response", status: response.status },
+    };
+  }
+  throw new Error("Backend returned an unexpected non-JSON response.");
+}
+
+function formatUploadError(status: number, payload: ApiErrorPayload): string {
+  const code = payload.error?.code;
+  const message = payload.error?.message ?? payload.detail;
+  if (code === "file_too_large" || status === 413) {
+    return message ?? "File is too large for this demo workflow.";
+  }
+  if (code === "execution_timeout") {
+    return "Analysis timed out. Try a smaller file or fewer rows.";
+  }
+  if (code === "unsupported_file" || status === 400) {
+    return message ?? "Upload a supported CSV or XLSX file.";
+  }
+  if (code === "non_json_response") {
+    return "The backend or hosting layer rejected the request before DataBrief could process it. Check the upload size and try again.";
+  }
+  return message ?? "The backend failed while running the workflow.";
 }
 
 // ---------------------------------------------------------------------------

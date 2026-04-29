@@ -90,6 +90,12 @@ h2 {
   gap: 12px;
 }
 
+.uploadHint {
+  color: #647482;
+  font-size: 0.86rem;
+  margin: 10px 0 0;
+}
+
 input[type="file"] {
   border: 1px dashed #aab4bf;
   border-radius: 8px;
@@ -321,8 +327,16 @@ button:disabled {
   min-width: 0;
 }
 
+.tableHint {
+  font-size: 0.86rem;
+  margin-bottom: 10px;
+}
+
 .tableWrap {
+  border: 1px solid #edf0f2;
+  border-radius: 8px;
   overflow-x: auto;
+  width: 100%;
 }
 
 table {
@@ -344,6 +358,31 @@ td {
 th {
   color: #52616d;
   font-size: 0.82rem;
+}
+
+.sampleTable {
+  table-layout: fixed;
+  width: max-content;
+}
+
+.sampleTable th,
+.sampleTable td {
+  max-width: none;
+  min-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sampleTable th {
+  background: #f6f7f9;
+  position: sticky;
+  top: 0;
+}
+
+.sampleTable td:hover {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 @media (max-width: 800px) {
@@ -600,4 +639,3 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-

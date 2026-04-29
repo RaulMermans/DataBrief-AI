@@ -159,24 +159,15 @@ def generate_report(
     dup_from_summary = summary.get("duplicate_rows", dup_rows)
 
     # KPI cards
-    for label, value in kpis.items():
+    for label, value in _prioritize_kpis(kpis, dataset_type):
         report.kpi_cards.append(KpiCard(label=label, value=value, source="summary.json:kpis"))
 
-    # Top findings from numeric summary
-    for col, stats in numeric_summary.items():
-        desc = (
-            f"{col}: mean={stats.get('mean')}, "
-            f"min={stats.get('min')}, max={stats.get('max')}, "
-            f"count={stats.get('count')}"
-        )
-        report.top_findings.append(Finding(description=desc, source=f"summary.json:numeric_summary:{col}"))
-
-    # Top findings from category summary (top category per column)
-    for col, counts in category_summary.items():
-        if counts:
-            top_label, top_count = counts[0]
-            desc = f"{col}: top value '{top_label}' appears {top_count} time(s)"
-            report.top_findings.append(Finding(description=desc, source=f"summary.json:category_summary:{col}"))
+    report.top_findings = _build_top_findings(
+        dataset_type=dataset_type,
+        kpis=kpis,
+        numeric_summary=numeric_summary,
+        category_summary=category_summary,
+    )
 
     # Anomaly table
     missing_cells = kpis.get("Missing cells", sum(profile.get("missing_percent_by_column", {}).values()))
@@ -202,12 +193,28 @@ def generate_report(
     plan_kpis: list[str] = plan.get("likely_kpis", [])
     plan_questions: list[str] = plan.get("business_questions", [])
     recommendations: list[str] = []
-    if kpis:
-        computed_kpi_names = list(kpis.keys())
+    business_kpis = [
+        label for label, _value in _prioritize_kpis(kpis, dataset_type)
+        if label not in {"Rows", "Columns", "Duplicate rows", "Missing cells"}
+    ]
+    if business_kpis:
         recommendations.append(
-            f"Focus attention on: {', '.join(computed_kpi_names[:3])}. "
-            "These are computed directly from the uploaded data."
+            f"Use {', '.join(business_kpis[:3])} as the primary review metrics; "
+            "they are computed directly from the uploaded data."
         )
+    if dataset_type == "ecommerce":
+        if _numeric_kpi(kpis, "Return/cancel rate") > 0:
+            recommendations.append(
+                f"Review return and cancellation drivers because Return/cancel rate is {kpis['Return/cancel rate']}%."
+            )
+        if _numeric_kpi(kpis, "Discount rate") > 0:
+            recommendations.append(
+                f"Audit discounting by category or channel because Discount rate is {kpis['Discount rate']}%."
+            )
+        if any(label.startswith("Distinct channel") for label in kpis):
+            recommendations.append(
+                "Compare revenue by channel before reallocating acquisition effort."
+            )
     if dup_from_summary > 0:
         recommendations.append(
             f"Review {dup_from_summary} duplicate row(s) before drawing conclusions."
@@ -216,19 +223,19 @@ def generate_report(
         recommendations.append(
             f"Address {missing_cells} missing cell(s) to improve analysis completeness."
         )
-    # Add plan-derived questions as investigation suggestions (not facts)
-    for question in plan_questions[:3]:
-        recommendations.append(f"Investigate: {question}")
+    if not recommendations and plan_questions:
+        recommendations.append(f"Investigate: {plan_questions[0]}")
     report.business_recommendations = recommendations
 
     # Executive summary (3 sentences max, fully grounded)
     chart_count = len(report.chart_artifacts)
     kpi_highlight = ""
-    for label, value in list(kpis.items())[:2]:
+    for label, value in _prioritize_kpis(kpis, dataset_type)[:3]:
+        if label in {"Rows", "Columns"}:
+            continue
         kpi_highlight += f" {label}: {value}."
     report.executive_summary = (
-        f"Processed {row_count} rows and {col_count} columns "
-        f"from a {dataset_type} dataset.{kpi_highlight} "
+        f"Analyzed a {dataset_type} dataset with {row_count} rows and {col_count} columns.{kpi_highlight} "
         f"The analysis produced {chart_count} chart(s) and flagged "
         f"{dup_from_summary} duplicate row(s) and {missing_cells} missing cell(s)."
     )
@@ -241,3 +248,92 @@ def generate_report(
     )
 
     return report
+
+
+def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str, Any]]:
+    structural = {"Rows", "Columns", "Duplicate rows", "Missing cells"}
+    ecommerce_order = [
+        "Gross sales",
+        "Net revenue",
+        "Gross margin",
+        "Order count",
+        "Units sold",
+        "Average order value",
+        "Return/cancel rate",
+        "Discount rate",
+    ]
+    sales_order = ["Total revenue", "Average revenue", "Total sales", "Average sales"]
+    preferred = ecommerce_order if dataset_type == "ecommerce" else sales_order
+    ordered: list[tuple[str, Any]] = []
+    used: set[str] = set()
+
+    for wanted in preferred:
+        if wanted in kpis:
+            ordered.append((wanted, kpis[wanted]))
+            used.add(wanted)
+    for label, value in kpis.items():
+        if label not in used and label not in structural:
+            ordered.append((label, value))
+            used.add(label)
+    for label in ("Rows", "Columns", "Duplicate rows", "Missing cells"):
+        if label in kpis and label not in used:
+            ordered.append((label, kpis[label]))
+    return ordered
+
+
+def _build_top_findings(
+    *,
+    dataset_type: str,
+    kpis: dict[str, Any],
+    numeric_summary: dict[str, Any],
+    category_summary: dict[str, Any],
+) -> list[Finding]:
+    findings: list[Finding] = []
+
+    if dataset_type == "ecommerce":
+        if "Net revenue" in kpis and "Order count" in kpis:
+            findings.append(Finding(
+                description=f"Net revenue is {kpis['Net revenue']} across {kpis['Order count']} order(s).",
+                source="summary.json:kpis",
+            ))
+        if "Average order value" in kpis:
+            findings.append(Finding(
+                description=f"Average order value is {kpis['Average order value']}.",
+                source="summary.json:kpis",
+            ))
+        if "Return/cancel rate" in kpis:
+            findings.append(Finding(
+                description=f"Return/cancel rate is {kpis['Return/cancel rate']}%.",
+                source="summary.json:kpis",
+            ))
+        if "Discount rate" in kpis:
+            findings.append(Finding(
+                description=f"Discount rate is {kpis['Discount rate']}%.",
+                source="summary.json:kpis",
+            ))
+
+    for col, counts in category_summary.items():
+        if counts:
+            top_label, top_count = counts[0]
+            desc = f"{col}: '{top_label}' is the largest observed segment with {top_count} row(s)."
+            findings.append(Finding(description=desc, source=f"summary.json:category_summary:{col}"))
+        if len(findings) >= 6:
+            break
+
+    for col, stats in numeric_summary.items():
+        desc = (
+            f"{col}: total={stats.get('sum')}, average={stats.get('mean')}, "
+            f"range={stats.get('min')} to {stats.get('max')}."
+        )
+        findings.append(Finding(description=desc, source=f"summary.json:numeric_summary:{col}"))
+        if len(findings) >= 8:
+            break
+
+    return findings[:8]
+
+
+def _numeric_kpi(kpis: dict[str, Any], label: str) -> float:
+    value = kpis.get(label)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0

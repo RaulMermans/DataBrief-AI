@@ -28,6 +28,45 @@ def test_route_dataset_defaults_to_generic() -> None:
     assert route.confidence == 0.8
 
 
+def test_route_dataset_detects_ecommerce_transactions() -> None:
+    route = route_dataset(
+        {
+            "inferred_types": {
+                "order_id": "string",
+                "order_date": "date",
+                "sku": "string",
+                "category": "string",
+                "net_revenue": "number",
+                "quantity": "integer",
+                "channel": "string",
+                "device": "string",
+                "status": "string",
+            }
+        }
+    )
+
+    assert route.dataset_type == "ecommerce"
+    assert route.confidence >= 0.8
+    assert "ecommerce" in route.explanation.lower()
+
+
+def test_route_dataset_detects_finance() -> None:
+    route = route_dataset(
+        {
+            "inferred_types": {
+                "transaction_date": "date",
+                "account": "string",
+                "debit": "number",
+                "credit": "number",
+                "balance": "number",
+            }
+        }
+    )
+
+    assert route.dataset_type == "finance"
+    assert route.confidence >= 0.75
+
+
 def test_sample_datasets_route_sensibly() -> None:
     expected_routes = {
         "sample_sales.csv": "sales",

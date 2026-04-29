@@ -62,6 +62,24 @@ _PLAN = {
     "anomaly_checks": [],
 }
 
+_ECOMMERCE_PROFILE = {
+    "row_count": 3,
+    "column_count": 7,
+    "duplicate_rows": 0,
+    "inferred_types": {
+        "order_id": "string",
+        "category": "string",
+        "channel": "string",
+        "device": "string",
+        "status": "string",
+        "net_revenue": "number",
+        "quantity": "integer",
+    },
+    "missing_percent_by_column": {},
+    "warnings": [],
+    "sample_rows": [],
+}
+
 _SUCCESS_EVALUATION = ExecutionEvaluation(
     outcome="success", note="Completed in 200 ms with 1 artifact."
 )
@@ -153,3 +171,50 @@ def test_generate_report_to_dict_complete():
         "is_partial", "evaluator_note", "chart_artifacts", "revised", "revision_note",
     }
     assert required_keys.issubset(d.keys())
+
+
+def test_generate_report_prioritizes_ecommerce_business_kpis(tmp_path):
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(
+        """{
+          "dataset_type": "ecommerce",
+          "row_count": 3,
+          "column_count": 7,
+          "duplicate_rows": 0,
+          "kpis": {
+            "Rows": 3,
+            "Columns": 7,
+            "Net revenue": 300,
+            "Order count": 2,
+            "Average order value": 150,
+            "Return/cancel rate": 33.33,
+            "Discount rate": 5
+          },
+          "numeric_summary": {"net_revenue": {"count": 3, "sum": 300, "mean": 100, "min": 50, "max": 150}},
+          "category_summary": {"category": [["Shoes", 2]], "channel": [["Paid", 2]]}
+        }""",
+        encoding="utf-8",
+    )
+    artifact = ArtifactMetadata(
+        name="summary.json",
+        path=str(summary_path),
+        size_bytes=summary_path.stat().st_size,
+        content_type="application/json",
+        url="/api/runs/run/summary.json",
+    )
+
+    report = generate_report(
+        profile=_ECOMMERCE_PROFILE,
+        route={"dataset_type": "ecommerce", "confidence": 0.95, "explanation": "test"},
+        plan={"likely_kpis": ["Net revenue"], "business_questions": [], "recommended_transformations": [], "recommended_charts": [], "anomaly_checks": []},
+        evaluation=_SUCCESS_EVALUATION,
+        execution=_success_execution(artifacts=[artifact]),
+    )
+
+    assert [card.label for card in report.kpi_cards[:3]] == [
+        "Net revenue",
+        "Order count",
+        "Average order value",
+    ]
+    assert any("Return/cancel rate" in finding.description for finding in report.top_findings)
+    assert any("discount" in rec.lower() for rec in report.business_recommendations)

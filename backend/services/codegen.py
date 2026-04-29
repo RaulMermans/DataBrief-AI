@@ -60,7 +60,7 @@ def generate_python_script(
     skip_date_analysis: bool = False,
 ) -> GeneratedCode:
     dataset_type = route.get("dataset_type", "generic")
-    if dataset_type not in {"sales", "generic"}:
+    if dataset_type not in {"sales", "ecommerce", "finance", "generic"}:
         dataset_type = "generic"
 
     inferred_types = profile.get("inferred_types", {})
@@ -247,29 +247,14 @@ def main():
 
     chart_count = 0
     if not SKIP_CHARTS:
-        chart_count += write_missing_chart(ARTIFACT_DIR / "missing_values.svg", missing)
-        if numeric_columns:
-            chart_count += write_histogram_chart(
-                ARTIFACT_DIR / f"histogram_{safe_name(numeric_columns[0])}.svg",
-                cleaned_rows,
-                numeric_columns[0],
-            )
-        if category_columns:
-            metric_column = pick_sales_measure(columns, numeric_columns) or (numeric_columns[0] if numeric_columns else None)
-            chart_count += write_category_chart(
-                ARTIFACT_DIR / f"category_{safe_name(category_columns[0])}.svg",
-                cleaned_rows,
-                category_columns[0],
-                metric_column,
-            )
-        if date_columns and numeric_columns:
-            metric_column = pick_sales_measure(columns, numeric_columns) or numeric_columns[0]
-            chart_count += write_time_chart(
-                ARTIFACT_DIR / f"time_{safe_name(metric_column)}.svg",
-                cleaned_rows,
-                date_columns[0],
-                metric_column,
-            )
+        chart_count += write_domain_charts(
+            cleaned_rows,
+            columns,
+            numeric_columns,
+            date_columns,
+            category_columns,
+            missing,
+        )
 
     print(f"Processed {len(cleaned_rows)} rows and {len(columns)} columns.")
     print(f"Saved {chart_count} chart artifact(s) to {ARTIFACT_DIR}.")
@@ -349,30 +334,184 @@ def summarize_categories(rows, category_columns):
 
 
 def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows, missing):
-    kpis = {
-        "Rows": len(rows),
-        "Columns": len(columns),
-        "Duplicate rows": duplicate_rows,
-        "Missing cells": sum(missing.values()),
-    }
-    measure_column = pick_sales_measure(columns, numeric_columns) or (numeric_columns[0] if numeric_columns else None)
-    if measure_column:
-        values = numeric_values(rows, measure_column)
-        if values:
-            kpis[f"Total {measure_column}"] = round(sum(values), 2)
-            kpis[f"Average {measure_column}"] = round(statistics.fmean(values), 2)
-    if category_columns:
-        column = category_columns[0]
-        kpis[f"Distinct {column}"] = len({row.get(column, "") for row in rows if row.get(column, "") != ""})
+    kpis = {}
+    dataset_type = CONTEXT["dataset_type"]
+    revenue_column = pick_revenue_measure(columns, numeric_columns)
+    gross_column = pick_column(columns, ["gross_sales", "gross", "subtotal"], numeric_columns)
+    units_column = pick_column(columns, ["quantity", "qty", "units"], numeric_columns)
+    margin_column = pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
+    discount_column = pick_column(columns, ["discount", "coupon"], numeric_columns)
+    order_column = pick_column(columns, ["order_id", "order", "transaction"])
+    category_column = pick_column(columns, ["category", "product_type", "department", "product"])
+    channel_column = pick_column(columns, ["channel", "source", "campaign", "medium"])
+    device_column = pick_column(columns, ["device", "platform"])
+    status_column = pick_column(columns, ["status", "payment_status", "fulfillment_status", "return", "refund", "cancel"])
+
+    if dataset_type == "ecommerce":
+        if gross_column:
+            gross_values = numeric_values(rows, gross_column)
+            if gross_values:
+                kpis["Gross sales"] = round(sum(gross_values), 2)
+        if revenue_column:
+            revenue_values = numeric_values(rows, revenue_column)
+            if revenue_values:
+                net_revenue = round(sum(revenue_values), 2)
+                kpis["Net revenue"] = net_revenue
+                order_count = distinct_count(rows, order_column) if order_column else len(rows)
+                kpis["Order count"] = order_count
+                if order_count:
+                    kpis["Average order value"] = round(net_revenue / order_count, 2)
+        if margin_column:
+            margin_values = numeric_values(rows, margin_column)
+            if margin_values:
+                kpis["Gross margin"] = round(sum(margin_values), 2)
+        if units_column:
+            units_values = numeric_values(rows, units_column)
+            if units_values:
+                kpis["Units sold"] = round(sum(units_values), 2)
+        if discount_column:
+            discount_values = numeric_values(rows, discount_column)
+            if discount_values:
+                discount_total = sum(discount_values)
+                denominator = sum(numeric_values(rows, gross_column)) if gross_column else discount_total + sum(numeric_values(rows, revenue_column) if revenue_column else [])
+                if denominator:
+                    kpis["Discount rate"] = round((discount_total / denominator) * 100, 2)
+        rate = status_rate(rows, status_column, ["return", "returned", "refund", "refunded", "cancel", "cancelled", "canceled"])
+        if rate is not None:
+            kpis["Return/cancel rate"] = rate
+        if category_column:
+            kpis[f"Distinct {category_column}"] = distinct_count(rows, category_column)
+        if channel_column:
+            kpis[f"Distinct {channel_column}"] = distinct_count(rows, channel_column)
+        if device_column:
+            kpis[f"Distinct {device_column}"] = distinct_count(rows, device_column)
+    else:
+        measure_column = revenue_column or (numeric_columns[0] if numeric_columns else None)
+        if measure_column:
+            values = numeric_values(rows, measure_column)
+            if values:
+                kpis[f"Total {measure_column}"] = round(sum(values), 2)
+                kpis[f"Average {measure_column}"] = round(statistics.fmean(values), 2)
+        if category_columns:
+            column = category_columns[0]
+            kpis[f"Distinct {column}"] = distinct_count(rows, column)
+
+    kpis["Rows"] = len(rows)
+    kpis["Columns"] = len(columns)
+    kpis["Duplicate rows"] = duplicate_rows
+    kpis["Missing cells"] = sum(missing.values())
     return kpis
 
 
-def pick_sales_measure(columns, numeric_columns):
-    tokens = ("revenue", "sales", "amount", "total", "price")
+def pick_revenue_measure(columns, numeric_columns):
+    tokens = ("net_revenue", "revenue", "sales", "amount", "total", "price")
+    return pick_column(columns, tokens, numeric_columns)
+
+
+def pick_column(columns, tokens, allowed_columns=None):
+    allowed = set(allowed_columns) if allowed_columns is not None else set(columns)
     for column in columns:
-        if column in numeric_columns and any(token in column.lower() for token in tokens):
+        normalized = column.lower()
+        if column in allowed and any(token in normalized for token in tokens):
             return column
     return None
+
+
+def distinct_count(rows, column):
+    if not column:
+        return 0
+    return len({row.get(column, "") for row in rows if row.get(column, "") != ""})
+
+
+def status_rate(rows, column, tokens):
+    if not column or not rows:
+        return None
+    matches = 0
+    for row in rows:
+        text = row.get(column, "").lower()
+        if any(token in text for token in tokens):
+            matches += 1
+    return round((matches / len(rows)) * 100, 2)
+
+
+def write_domain_charts(rows, columns, numeric_columns, date_columns, category_columns, missing):
+    chart_count = 0
+    dataset_type = CONTEXT["dataset_type"]
+    revenue_column = pick_revenue_measure(columns, numeric_columns) or (numeric_columns[0] if numeric_columns else None)
+    category_column = pick_column(columns, ["category", "product_type", "department", "product"])
+    channel_column = pick_column(columns, ["channel", "source", "campaign", "medium"])
+    device_column = pick_column(columns, ["device", "platform"])
+    status_column = pick_column(columns, ["status", "payment_status", "fulfillment_status", "return", "refund", "cancel"])
+    margin_column = pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
+
+    if dataset_type == "ecommerce":
+        if category_column:
+            chart_count += write_category_chart(
+                ARTIFACT_DIR / f"revenue_by_{safe_name(category_column)}.svg",
+                rows,
+                category_column,
+                revenue_column,
+            )
+        if channel_column:
+            chart_count += write_category_chart(
+                ARTIFACT_DIR / f"revenue_by_{safe_name(channel_column)}.svg",
+                rows,
+                channel_column,
+                revenue_column,
+            )
+        if device_column:
+            chart_count += write_category_chart(
+                ARTIFACT_DIR / f"revenue_by_{safe_name(device_column)}.svg",
+                rows,
+                device_column,
+                revenue_column,
+            )
+        if date_columns and revenue_column:
+            chart_count += write_time_chart(
+                ARTIFACT_DIR / f"revenue_trend_{safe_name(revenue_column)}.svg",
+                rows,
+                date_columns[0],
+                revenue_column,
+            )
+        if status_column:
+            chart_count += write_category_chart(
+                ARTIFACT_DIR / f"status_distribution_{safe_name(status_column)}.svg",
+                rows,
+                status_column,
+                None,
+            )
+        if margin_column and category_column:
+            chart_count += write_category_chart(
+                ARTIFACT_DIR / f"margin_by_{safe_name(category_column)}.svg",
+                rows,
+                category_column,
+                margin_column,
+            )
+        chart_count += write_missing_chart(ARTIFACT_DIR / "missing_values.svg", missing)
+        return chart_count
+
+    chart_count += write_missing_chart(ARTIFACT_DIR / "missing_values.svg", missing)
+    if numeric_columns:
+        chart_count += write_histogram_chart(
+            ARTIFACT_DIR / f"histogram_{safe_name(numeric_columns[0])}.svg",
+            rows,
+            numeric_columns[0],
+        )
+    if category_columns:
+        chart_count += write_category_chart(
+            ARTIFACT_DIR / f"category_{safe_name(category_columns[0])}.svg",
+            rows,
+            category_columns[0],
+            revenue_column,
+        )
+    if date_columns and revenue_column:
+        chart_count += write_time_chart(
+            ARTIFACT_DIR / f"time_{safe_name(revenue_column)}.svg",
+            rows,
+            date_columns[0],
+            revenue_column,
+        )
+    return chart_count
 
 
 def write_json(path, payload):

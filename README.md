@@ -2,7 +2,7 @@
 
 DataBrief AI is a workflow-driven analytics copilot for uploaded datasets.
 
-The current slice supports CSV/XLSX upload, deterministic profiling, sales/generic routing, structured analysis planning, template-based Python generation, and bounded sandbox execution with artifacts.
+The current slice supports CSV/XLSX upload, deterministic profiling, sales/ecommerce/finance/generic routing, structured analysis planning, template-based Python generation, bounded sandbox execution with artifacts, and structured user-facing failures.
 
 ## Run locally
 
@@ -34,6 +34,8 @@ python3 -m compileall backend
 
 The upload endpoint returns `profile`, `route`, deterministic `plan`, generated Python code, execution logs, `retry` history, `report` summary, and artifact metadata for CSV and XLSX files.
 
+Failures return JSON with `detail` and `error.code` fields. Expected codes include `file_too_large`, `unsupported_file`, `execution_timeout`, `invalid_upload`, and `backend_failure`.
+
 ## Deploy to Vercel
 
 This repo uses Vercel Services to deploy the Next.js frontend and FastAPI backend from a single repository.
@@ -50,7 +52,7 @@ This repo uses Vercel Services to deploy the Next.js frontend and FastAPI backen
    - `DATABRIEF_CORS_ORIGINS` → `https://<your-domain>.vercel.app`
 3. Deploy.
 
-> **Note:** Vercel's serverless runtime uses an ephemeral filesystem. Artifact files and the SQLite run store are not persisted across invocations. This deployment is suitable for live demos, not long-term artifact storage.
+> **Note:** Vercel's serverless runtime uses request-size, memory, timeout, and ephemeral-filesystem limits. Artifact files and the SQLite run store are not persisted across invocations. Oversized uploads or long-running analyses should fail with clear error copy, but this deployment is suitable for live demos, not long-term artifact storage or large production datasets.
 
 ## Demo datasets
 

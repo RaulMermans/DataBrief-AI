@@ -158,6 +158,8 @@ def _build_evidence_index(computed_facts: dict) -> dict[str, str]:
 
     for label, value in computed_facts.get("kpis", {}).items():
         index[label.lower()] = f"summary.json:kpis.{label}"
+        for token in re.findall(r"[\w.]+", label.lower()):
+            index[token] = f"summary.json:kpis.{label}"
         index[str(value).lower()] = f"summary.json:kpis.{label}"
 
     for col in computed_facts.get("numeric_summary", {}):

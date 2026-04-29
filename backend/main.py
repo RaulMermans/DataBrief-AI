@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from openpyxl import load_workbook
@@ -49,6 +50,66 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+def _error_code(status_code: int, detail: object) -> str:
+    text = str(detail).lower()
+    if status_code == 413:
+        return "file_too_large"
+    if "csv or xlsx" in text or "unsupported" in text:
+        return "unsupported_file"
+    if "timeout" in text or "timed out" in text:
+        return "execution_timeout"
+    if status_code == 400:
+        return "invalid_upload"
+    if status_code == 404:
+        return "not_found"
+    if status_code == 410:
+        return "expired"
+    return "backend_failure"
+
+
+def _error_payload(status_code: int, detail: object) -> dict[str, object]:
+    message = detail if isinstance(detail, str) else "Request failed."
+    return {
+        "detail": message,
+        "error": {
+            "code": _error_code(status_code, detail),
+            "message": message,
+            "status": status_code,
+        },
+    }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_payload(exc.status_code, exc.detail),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content=_error_payload(422, "Request could not be validated."),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("unhandled backend error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content=_error_payload(
+            500,
+            "The backend failed while running the workflow. Try a smaller file or review the dataset format.",
+        ),
+    )
 
 
 @app.get("/health")

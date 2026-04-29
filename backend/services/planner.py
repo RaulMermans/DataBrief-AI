@@ -34,6 +34,10 @@ def generate_analysis_plan(
     date_columns = _columns_by_type(inferred_types, {"date"})
     category_columns = _columns_by_type(inferred_types, {"string", "boolean"})
 
+    if dataset_type == "ecommerce":
+        return _ecommerce_plan(columns, numeric_columns, date_columns, category_columns)
+    if dataset_type == "finance":
+        return _finance_plan(columns, numeric_columns, date_columns, category_columns)
     if dataset_type == "sales":
         return _sales_plan(columns, numeric_columns, date_columns, category_columns)
 
@@ -103,6 +107,145 @@ def _sales_plan(
         recommended_transformations=recommended_transformations,
         recommended_charts=recommended_charts,
         anomaly_checks=anomaly_checks,
+    )
+
+
+def _ecommerce_plan(
+    columns: list[str],
+    numeric_columns: list[str],
+    date_columns: list[str],
+    category_columns: list[str],
+) -> AnalysisPlan:
+    revenue_column = _first_matching(columns, ["net_revenue", "revenue", "sales", "amount", "total"])
+    gross_column = _first_matching(columns, ["gross_sales", "gross", "subtotal"])
+    margin_column = _first_matching(columns, ["gross_margin", "margin", "profit"])
+    order_column = _first_matching(columns, ["order_id", "order", "transaction"])
+    units_column = _first_matching(columns, ["units", "quantity", "qty"])
+    discount_column = _first_matching(columns, ["discount", "coupon"])
+    category_column = _first_matching(columns, ["category", "product_type", "department", "product"])
+    channel_column = _first_matching(columns, ["channel", "source", "campaign", "medium"])
+    device_column = _first_matching(columns, ["device", "platform"])
+    status_column = _first_matching(columns, ["status", "return", "refund", "cancel"])
+    date_column = date_columns[0] if date_columns else _first_matching(columns, ["date", "created", "ordered"])
+
+    likely_kpis = _dedupe(
+        [
+            f"Gross sales from {gross_column}" if gross_column else "Gross sales",
+            f"Net revenue from {revenue_column}" if revenue_column else "Net revenue",
+            f"Gross margin from {margin_column}" if margin_column else "Gross margin",
+            f"Order count from {order_column}" if order_column else "Order count",
+            f"Units sold from {units_column}" if units_column else "Units sold",
+            "Average order value",
+            f"Return/cancel rate from {status_column}" if status_column else "Return/cancel rate",
+            f"Discount rate from {discount_column}" if discount_column else "Discount rate",
+            f"Top categories by {category_column}" if category_column else "Top categories",
+            f"Channel performance by {channel_column}" if channel_column else "Acquisition channel performance",
+            f"Device performance by {device_column}" if device_column else "Device performance",
+            f"Payment/status mix by {status_column}" if status_column else "Payment/status mix",
+        ]
+    )
+
+    business_questions = [
+        "Which categories contribute the most net revenue?",
+        "Which acquisition channels and devices drive the strongest revenue?",
+        "How are orders, revenue, and average order value trending over time?",
+        "Where are returns, cancellations, or discounts reducing realized revenue?",
+        "Which payment or order statuses need operational attention?",
+    ]
+
+    recommended_transformations = _dedupe(
+        [
+            f"Parse {date_column} into reporting periods" if date_column else "Add reporting periods if an order date column is available",
+            f"Use {revenue_column} as net revenue" if revenue_column else "Identify the best available net revenue measure",
+            f"Use {gross_column} and {discount_column} to compute discount rate" if gross_column and discount_column else "Compute discount rate only when gross sales and discount fields exist",
+            f"Group products into {category_column}" if category_column else "Use product/category fields for merchandising cuts when present",
+            f"Normalize {status_column} values for return/cancel analysis" if status_column else "Normalize fulfillment/payment statuses when present",
+        ]
+    )
+
+    recommended_charts = _dedupe(
+        [
+            f"Bar chart of {revenue_column or 'revenue'} by {category_column or 'category'}",
+            f"Bar chart of {revenue_column or 'revenue'} by {channel_column or 'channel'}",
+            f"Bar chart of {revenue_column or 'revenue'} by {device_column or 'device'}",
+            f"Line chart of orders and {revenue_column or 'revenue'} by {date_column or 'period'}",
+            f"Status distribution by {status_column}" if status_column else "Status distribution",
+            f"Return/cancel distribution by {status_column}" if status_column else "Return/cancel distribution",
+            f"Bar chart of {margin_column} by {category_column or 'category'}" if margin_column else "Margin by category if margin is available",
+        ]
+    )
+
+    anomaly_checks = [
+        "Missing order, revenue, product, channel, or status values",
+        "Negative net revenue or units sold",
+        "High return or cancellation rates",
+        "Discount rate spikes by channel or category",
+        "Duplicate transaction rows",
+    ]
+
+    return AnalysisPlan(
+        dataset_type="ecommerce",
+        likely_kpis=likely_kpis,
+        business_questions=business_questions,
+        recommended_transformations=recommended_transformations,
+        recommended_charts=recommended_charts,
+        anomaly_checks=anomaly_checks,
+    )
+
+
+def _finance_plan(
+    columns: list[str],
+    numeric_columns: list[str],
+    date_columns: list[str],
+    category_columns: list[str],
+) -> AnalysisPlan:
+    amount_column = _first_matching(columns, ["amount", "debit", "credit", "balance", "cost", "expense", "income"])
+    account_column = _first_matching(columns, ["account", "category", "department"])
+    date_column = date_columns[0] if date_columns else None
+
+    return AnalysisPlan(
+        dataset_type="finance",
+        likely_kpis=_dedupe(
+            [
+                f"Total {amount_column}" if amount_column else "Total amount",
+                f"Average {amount_column}" if amount_column else "Average transaction value",
+                f"Distinct {account_column}" if account_column else "Distinct accounts/categories",
+                "Duplicate transaction count",
+                "Missing financial fields",
+            ]
+        ),
+        business_questions=[
+            "How are financial amounts trending over time?",
+            "Which accounts or categories drive the largest totals?",
+            "Where do missing or duplicate transactions affect trust?",
+            "Which numeric amounts show unusual spikes?",
+            "Which categories need closer review?",
+        ],
+        recommended_transformations=_dedupe(
+            [
+                f"Parse {date_column} into reporting periods" if date_column else "Add reporting periods if a transaction date exists",
+                f"Group by {account_column}" if account_column else "Identify account/category grouping fields",
+                "Convert amount fields to numbers",
+                "Review duplicate transactions",
+                "Flag missing required financial fields",
+            ]
+        ),
+        recommended_charts=_dedupe(
+            [
+                f"Line chart of {amount_column or 'amount'} by {date_column or 'period'}",
+                f"Bar chart of {amount_column or 'amount'} by {account_column or 'category'}",
+                f"Histogram of {amount_column}" if amount_column else "Histogram of the primary amount",
+                "Missing values by column",
+                "Duplicate transaction summary",
+            ]
+        ),
+        anomaly_checks=[
+            "Duplicate transactions",
+            "Missing amount, account, or date values",
+            "Negative or unusually large amounts",
+            "High missingness by financial field",
+            "Rare or inconsistent account labels",
+        ],
     )
 
 
