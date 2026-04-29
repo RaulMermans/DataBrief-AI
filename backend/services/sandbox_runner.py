@@ -46,7 +46,10 @@ _ALLOWED_TOP_LEVEL_IMPORTS: frozenset[str] = frozenset(
 
 RUN_ROOT = Path(tempfile.gettempdir()) / "databrief-ai-runs"
 DEFAULT_TIMEOUT_SECONDS = 10
-DEFAULT_MEMORY_LIMIT_MB = 512
+# Disabled by default: Python + pandas/matplotlib startup can legitimately
+# exceed small virtual-memory caps on some platforms.  Wall-clock timeout
+# remains the primary subprocess guard.
+DEFAULT_MEMORY_LIMIT_MB = 0
 
 
 @dataclass(frozen=True)
@@ -264,8 +267,8 @@ def execute_generated_code(
             capture_output=True,
             timeout=timeout_seconds,
             preexec_fn=(
-                _resource_limiter(memory_limit_mb, timeout_seconds)
-                if os.name == "posix"
+                _resource_limiter(memory_limit_mb)
+                if os.name == "posix" and memory_limit_mb > 0
                 else None
             ),
             check=False,
@@ -357,15 +360,13 @@ def _sandbox_env() -> dict[str, str]:
     }
 
 
-def _resource_limiter(memory_limit_mb: int, timeout_seconds: int):
+def _resource_limiter(memory_limit_mb: int):
     def limit_resources() -> None:
         try:
             import resource
 
             memory_bytes = memory_limit_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
-            cpu_seconds = timeout_seconds + 1
-            resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
         except Exception:
             return
 
