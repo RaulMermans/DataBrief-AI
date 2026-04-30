@@ -285,7 +285,16 @@ def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str,
         "Return/cancel rate",
         "Discount rate",
     ]
-    sales_order = ["Total revenue", "Average revenue", "Total sales", "Average sales"]
+    sales_order = [
+        "Total revenue",
+        "Order count",
+        "Average order value",
+        "New customer count",
+        "New customer rate",
+        "Average revenue",
+        "Total sales",
+        "Average sales",
+    ]
     finance_order = ["Total amount", "Average amount", "Total debit", "Total credit", "Total balance"]
     if dataset_type == "ecommerce":
         preferred = ecommerce_order
@@ -301,7 +310,7 @@ def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str,
             ordered.append((wanted, kpis[wanted]))
             used.add(wanted)
     for label, value in kpis.items():
-        if label not in used and label not in structural:
+        if label not in used and label not in structural and not _is_identifier_metric(label):
             ordered.append((label, value))
             used.add(label)
     for label in ("Rows", "Columns", "Duplicate rows", "Missing cells"):
@@ -355,6 +364,8 @@ def _build_top_findings(
     findings.extend(sorted(concentration_findings, key=lambda f: _percent_in_text(f.description), reverse=True))
 
     for col, stats in numeric_summary.items():
+        if _is_identifier_metric(col):
+            continue
         min_value = stats.get("min")
         max_value = stats.get("max")
         mean_value = stats.get("mean")
@@ -439,7 +450,9 @@ def _build_dataset_limitations(
     chart_count: int,
 ) -> list[str]:
     columns = [column.lower() for column in profile.get("inferred_types", {}).keys()]
+    semantic = profile.get("semantic_profile", {})
     limitations: list[str] = []
+    limitations.extend(semantic.get("limitations", []))
     if dataset_type == "ecommerce":
         if "Net revenue" in kpis or "Total estimated spend" in kpis:
             limitations.append("Supports transaction-level spend and volume analysis from the uploaded fields.")
@@ -461,11 +474,18 @@ def _build_dataset_limitations(
     if chart_count == 0:
         limitations.append("Chart support is limited for this dataset because no useful SVG chart artifact was produced.")
     limitations.append("Does not establish causality or benchmark performance without external reference data.")
-    return limitations
+    return list(dict.fromkeys(limitations))
 
 
 def _has_named_column(columns: list[str], tokens: list[str]) -> bool:
     return any(any(token in column for token in tokens) for column in columns)
+
+
+def _is_identifier_metric(label: str) -> bool:
+    text = label.lower()
+    return text in {"id", "referencia", "reference"} or any(
+        token in text for token in (" id", "id ", "identifier", "referencia", "reference")
+    )
 
 
 def _percent_in_text(text: str) -> float:

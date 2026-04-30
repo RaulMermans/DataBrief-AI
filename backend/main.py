@@ -19,6 +19,7 @@ from services.profiler import profile_csv, profile_xlsx
 from services.report_generator import generate_report, load_summary_json
 from services.retry_runner import run_with_retry
 from services.router import route_dataset
+from services.semantic_profile import build_semantic_profile
 from services.run_store import RunStore, RunStatus
 from services.sandbox_runner import (
     cleanup_expired_runs,
@@ -218,6 +219,7 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     profile_payload = profile.to_dict()
+    profile_payload["semantic_profile"] = build_semantic_profile(profile_payload).to_dict()
     route = route_dataset(profile_payload)
     route_payload = route.to_dict()
     plan = generate_analysis_plan(profile_payload, route_payload)

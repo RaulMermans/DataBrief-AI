@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from services.semantic_profile import EXCLUDED_ROLES, build_semantic_profile
+
 
 @dataclass(frozen=True)
 class AnalysisPlan:
@@ -28,9 +30,18 @@ def generate_analysis_plan(
     profile: dict[str, Any], route: dict[str, Any]
 ) -> AnalysisPlan:
     dataset_type = route["dataset_type"]
+    semantic = profile.get("semantic_profile") or build_semantic_profile(profile).to_dict()
+    semantic_plan = _semantic_plan(profile, route, semantic)
+    if semantic_plan:
+        return semantic_plan
+
     columns = list(profile.get("inferred_types", {}).keys())
     inferred_types = profile.get("inferred_types", {})
-    numeric_columns = _columns_by_type(inferred_types, {"integer", "number"})
+    excluded = _columns_for_roles(semantic, EXCLUDED_ROLES)
+    numeric_columns = [
+        column for column in _columns_by_type(inferred_types, {"integer", "number"})
+        if column not in excluded
+    ]
     date_columns = _columns_by_type(inferred_types, {"date"})
     category_columns = _columns_by_type(inferred_types, {"string", "boolean"})
 
@@ -42,6 +53,131 @@ def generate_analysis_plan(
         return _sales_plan(columns, numeric_columns, date_columns, category_columns)
 
     return _generic_plan(columns, numeric_columns, date_columns, category_columns)
+
+
+def _semantic_plan(
+    profile: dict[str, Any], route: dict[str, Any], semantic: dict[str, Any]
+) -> AnalysisPlan | None:
+    roles = semantic.get("column_roles", {})
+    subtype = route.get("dataset_subtype") or semantic.get("dataset_subtype", "generic")
+    dataset_type = route.get("dataset_type", "generic")
+    if not roles:
+        return None
+
+    revenue = _first_role(roles, ["revenue"])
+    date = _first_role(roles, ["date"])
+    customer = _first_role(roles, ["customer"])
+    new_customer = _first_role(roles, ["new_customer"])
+    payment = _first_role(roles, ["payment_method"])
+    status = _first_role(roles, ["status"])
+    geography = _first_role(roles, ["geography"])
+    category = _first_role(roles, ["category", "product"])
+    price = _first_role(roles, ["price"])
+    quantity = _first_role(roles, ["quantity"])
+    order = _first_role(roles, ["identifier"])
+
+    if subtype == "purchase_history" or (dataset_type == "ecommerce" and price and quantity and not revenue):
+        return AnalysisPlan(
+            dataset_type=dataset_type,
+            likely_kpis=_dedupe([
+                "Total estimated spend",
+                "Total units",
+                f"Average item price from {price}" if price else "Average item price",
+                f"Order count from {order}" if order else "Order count",
+                f"Spend by {category}" if category else None,
+                f"Spend by {geography}" if geography else None,
+            ]),
+            business_questions=[
+                "What is the estimated spend across purchases?",
+                "Which categories or products account for the most spend?",
+                "Which markets or delivery areas concentrate spend?",
+                "How many units were purchased?",
+                "Where do missing or duplicate records affect trust?",
+            ],
+            recommended_transformations=_dedupe([
+                f"Compute estimated spend as {price} times {quantity}",
+                f"Parse {date} into reporting periods" if date else "Add reporting periods if a purchase date exists",
+                f"Group products into {category}" if category else "Use product/category fields for merchandising cuts when present",
+                "Review duplicate purchase rows",
+                "Flag missing purchase fields",
+            ]),
+            recommended_charts=_dedupe([
+                f"Bar chart of estimated spend by {category}" if category else "Bar chart of estimated spend by category",
+                f"Bar chart of estimated spend by {geography}" if geography else None,
+                f"Line chart of estimated spend by {date}" if date else None,
+                "Missing values by column",
+            ]),
+            anomaly_checks=[
+                "Duplicate purchase rows",
+                "Missing price, quantity, product, or date values",
+                "Negative or zero price and quantity values",
+                "Spend outliers by category",
+                "Rare or inconsistent product labels",
+            ],
+        )
+
+    if subtype == "transactional_orders" or (dataset_type == "sales" and revenue):
+        return AnalysisPlan(
+            dataset_type=dataset_type,
+            likely_kpis=_dedupe([
+                "Total revenue",
+                "Average order value",
+                f"Order count from {order}" if order else "Order count",
+                f"Unique {customer}" if customer else None,
+                f"New customer count from {new_customer}" if new_customer else None,
+                f"Payment mix by {payment}" if payment else None,
+                f"Status mix by {status}" if status else None,
+                f"Revenue by {geography}" if geography else None,
+            ]),
+            business_questions=[
+                "How is revenue trending over time?",
+                "What is the average order value?",
+                "Which payment methods and statuses dominate orders?",
+                "Which customers or markets drive revenue?",
+                "Where do missing or duplicate records affect trust?",
+            ],
+            recommended_transformations=_dedupe([
+                f"Parse {date} into reporting periods" if date else "Add a reporting period if a date column is available",
+                f"Use {revenue} as the revenue measure",
+                f"Normalize {payment} values before grouping" if payment else None,
+                f"Normalize {status} values before grouping" if status else None,
+                "Review duplicate transaction rows",
+            ]),
+            recommended_charts=_dedupe([
+                f"Line chart of {revenue} by {date}" if date else None,
+                f"Bar chart of {revenue} by {payment}" if payment else None,
+                f"Bar chart of {revenue} by {status}" if status else None,
+                f"Bar chart of {revenue} by {geography}" if geography else None,
+                f"Bar chart of {revenue} by {customer}" if customer else None,
+                f"Bar chart of {revenue} by {category}" if category else None,
+                f"Histogram of {revenue}",
+                "Missing values by column",
+            ]),
+            anomaly_checks=[
+                "Duplicate order rows",
+                "Missing revenue, customer, status, payment, or date values",
+                "Negative or zero revenue values",
+                "Revenue outliers by period",
+                "Dominant payment, status, or geography segments",
+            ],
+        )
+
+    return None
+
+
+def _columns_for_roles(semantic: dict[str, Any], wanted: set[str]) -> set[str]:
+    return {
+        column for column, role in semantic.get("column_roles", {}).items()
+        if role in wanted
+    }
+
+
+def _first_role(roles: dict[str, str], wanted: list[str]) -> str | None:
+    for role in wanted:
+        for column, column_role in roles.items():
+            if column_role == role:
+                return column
+    return None
 
 
 def _sales_plan(

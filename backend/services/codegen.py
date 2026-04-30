@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from services.normalization import is_parseable_numeric_column
+from services.semantic_profile import BUSINESS_NUMERIC_ROLES, EXCLUDED_ROLES, build_semantic_profile
+
 
 ALLOWED_EXTERNAL_LIBRARIES = {"pandas", "numpy", "matplotlib", "seaborn"}
 ALLOWED_STDLIB_IMPORTS = {
@@ -64,21 +67,40 @@ def generate_python_script(
         dataset_type = "generic"
 
     inferred_types = profile.get("inferred_types", {})
+    semantic = profile.get("semantic_profile") or build_semantic_profile(profile).to_dict()
+    column_roles = semantic.get("column_roles", {})
+    excluded_columns = {
+        column for column, role in column_roles.items() if role in EXCLUDED_ROLES
+    }
+    sample_rows = profile.get("sample_rows", [])
     columns = list(inferred_types.keys())
     numeric_columns = [
         column
         for column, inferred_type in inferred_types.items()
-        if inferred_type in {"integer", "number"}
+        if inferred_type in {"integer", "number"} and column not in excluded_columns
     ]
+    for column, role in column_roles.items():
+        values = [row.get(column, "") for row in sample_rows]
+        if (
+            column not in numeric_columns
+            and column not in excluded_columns
+            and (role in BUSINESS_NUMERIC_ROLES or is_parseable_numeric_column(values))
+        ):
+            numeric_columns.append(column)
     date_columns = (
         []
         if skip_date_analysis
-        else [column for column, inferred_type in inferred_types.items() if inferred_type == "date"]
+        else [
+            column for column, inferred_type in inferred_types.items()
+            if inferred_type == "date" or column_roles.get(column) == "date"
+        ]
     )
     category_columns = [
         column
         for column, inferred_type in inferred_types.items()
         if inferred_type in {"string", "boolean"}
+        and column not in excluded_columns
+        and column_roles.get(column) not in BUSINESS_NUMERIC_ROLES | {"date"}
     ]
 
     context = {
@@ -87,6 +109,8 @@ def generate_python_script(
         "numeric_columns": numeric_columns,
         "date_columns": date_columns,
         "category_columns": category_columns,
+        "column_roles": column_roles,
+        "dataset_subtype": semantic.get("dataset_subtype", route.get("dataset_subtype", "generic")),
         "plan_kpis": plan.get("likely_kpis", []),
         "plan_charts": plan.get("recommended_charts", []),
         "input_file_path": str(input_file_path),
@@ -294,9 +318,29 @@ def missing_counts(rows, columns):
 
 
 def parse_float(value):
-    text = str(value).strip().replace(",", "")
+    text = str(value).strip()
     if text == "":
         return None
+    for token in ("€", "$", "£", "¥", "\xa0", " "):
+        text = text.replace(token, "")
+    text = "".join(character for character in text if character.isdigit() or character in {",", ".", "-", "+"})
+    comma = text.rfind(",")
+    dot = text.rfind(".")
+    if comma != -1 and dot != -1:
+        if comma > dot:
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif comma != -1:
+        parts = text.split(",")
+        if len(parts) == 2 and len(parts[1]) in {1, 2}:
+            text = text.replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif dot != -1:
+        parts = text.split(".")
+        if len(parts) > 2 and len(parts[-1]) == 3:
+            text = text.replace(".", "")
     try:
         number = float(text)
     except ValueError:
@@ -336,17 +380,21 @@ def summarize_categories(rows, category_columns):
 def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows, missing):
     kpis = {}
     dataset_type = CONTEXT["dataset_type"]
-    revenue_column = pick_revenue_measure(columns, numeric_columns)
+    revenue_column = role_column("revenue") or pick_revenue_measure(columns, numeric_columns)
     gross_column = pick_column(columns, ["gross_sales", "gross", "subtotal"], numeric_columns)
-    units_column = pick_column(columns, ["quantity", "qty", "units"], numeric_columns)
-    price_column = pick_column(columns, ["unit_price", "item_price", "price"], numeric_columns)
-    margin_column = pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
-    discount_column = pick_column(columns, ["discount", "coupon"], numeric_columns)
-    order_column = pick_column(columns, ["order_id", "order", "transaction"])
-    category_column = pick_column(columns, ["category", "product_type", "department", "product"])
+    units_column = role_column("quantity") or pick_column(columns, ["quantity", "qty", "units"], numeric_columns)
+    price_column = role_column("price") or pick_column(columns, ["unit_price", "item_price", "price"], numeric_columns)
+    margin_column = role_column("margin") or pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
+    discount_column = role_column("discount") or pick_column(columns, ["discount", "coupon"], numeric_columns)
+    order_column = role_column("identifier") or pick_column(columns, ["order_id", "order", "transaction"])
+    customer_column = role_column("customer")
+    new_customer_column = role_column("new_customer")
+    category_column = role_column("category") or role_column("product") or pick_column(columns, ["category", "product_type", "department", "product"])
     channel_column = pick_column(columns, ["channel", "source", "campaign", "medium"])
+    geography_column = role_column("geography")
+    payment_column = role_column("payment_method")
     device_column = pick_column(columns, ["device", "platform"])
-    status_column = pick_column(columns, ["status", "payment_status", "fulfillment_status", "return", "refund", "cancel"])
+    status_column = role_column("status") or pick_column(columns, ["status", "payment_status", "fulfillment_status", "return", "refund", "cancel"])
 
     if dataset_type == "ecommerce":
         if gross_column:
@@ -391,15 +439,39 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
         if device_column:
             kpis[f"Distinct {device_column}"] = distinct_count(rows, device_column)
     else:
-        measure_column = revenue_column or (numeric_columns[0] if numeric_columns else None)
-        if measure_column:
+        measure_column = revenue_column or first_business_numeric(numeric_columns)
+        if revenue_column:
+            values = numeric_values(rows, revenue_column)
+            if values:
+                revenue = round(sum(values), 2)
+                order_count = distinct_count(rows, order_column) if order_column else len(rows)
+                kpis["Total revenue"] = revenue
+                kpis["Order count"] = order_count
+                if order_count:
+                    kpis["Average order value"] = round(revenue / order_count, 2)
+        elif measure_column:
             values = numeric_values(rows, measure_column)
             if values:
                 kpis[f"Total {measure_column}"] = round(sum(values), 2)
                 kpis[f"Average {measure_column}"] = round(statistics.fmean(values), 2)
-        if category_columns:
-            column = category_columns[0]
-            kpis[f"Distinct {column}"] = distinct_count(rows, column)
+        if price_column and units_column and not revenue_column:
+            spend = spend_values(rows, price_column, units_column, price_column)
+            if spend:
+                kpis["Total estimated spend"] = round(sum(spend), 2)
+        if units_column:
+            unit_values = numeric_values(rows, units_column)
+            if unit_values:
+                kpis["Total units"] = round(sum(unit_values), 2)
+        if customer_column:
+            kpis[f"Unique {customer_column}"] = distinct_count(rows, customer_column)
+        if new_customer_column:
+            count = truthy_count(rows, new_customer_column)
+            kpis["New customer count"] = count
+            if rows:
+                kpis["New customer rate"] = round((count / len(rows)) * 100, 2)
+        for column in [payment_column, status_column, geography_column, category_column]:
+            if column:
+                kpis[f"Distinct {column}"] = distinct_count(rows, column)
 
     kpis["Rows"] = len(rows)
     kpis["Columns"] = len(columns)
@@ -411,6 +483,26 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
 def pick_revenue_measure(columns, numeric_columns):
     tokens = ("net_revenue", "revenue", "sales", "amount", "total", "spend", "price")
     return pick_column(columns, tokens, numeric_columns)
+
+
+def role_column(role):
+    for column, column_role in CONTEXT.get("column_roles", {}).items():
+        if column_role == role and column in CONTEXT["columns"]:
+            return column
+    return None
+
+
+def first_business_numeric(numeric_columns):
+    excluded_roles = {"identifier", "reference"}
+    for column in numeric_columns:
+        if CONTEXT.get("column_roles", {}).get(column) not in excluded_roles:
+            return column
+    return None
+
+
+def truthy_count(rows, column):
+    truthy = {"true", "yes", "y", "1", "si", "sí", "nuevo", "new"}
+    return sum(1 for row in rows if str(row.get(column, "")).strip().lower() in truthy)
 
 
 def spend_values(rows, revenue_column, units_column, price_column):
@@ -456,12 +548,13 @@ def status_rate(rows, column, tokens):
 def write_domain_charts(rows, columns, numeric_columns, date_columns, category_columns, missing):
     chart_count = 0
     dataset_type = CONTEXT["dataset_type"]
-    revenue_column = pick_revenue_measure(columns, numeric_columns) or (numeric_columns[0] if numeric_columns else None)
-    category_column = pick_column(columns, ["category", "product_type", "department", "product"])
-    channel_column = pick_column(columns, ["channel", "source", "campaign", "medium"])
+    revenue_column = role_column("revenue") or pick_revenue_measure(columns, numeric_columns) or first_business_numeric(numeric_columns)
+    category_column = role_column("category") or role_column("product") or pick_column(columns, ["category", "product_type", "department", "product"])
+    channel_column = role_column("payment_method") or pick_column(columns, ["channel", "source", "campaign", "medium"])
+    geography_column = role_column("geography")
     device_column = pick_column(columns, ["device", "platform"])
-    status_column = pick_column(columns, ["status", "payment_status", "fulfillment_status", "return", "refund", "cancel"])
-    margin_column = pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
+    status_column = role_column("status") or pick_column(columns, ["status", "payment_status", "fulfillment_status", "return", "refund", "cancel"])
+    margin_column = role_column("margin") or pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
 
     if dataset_type == "ecommerce":
         if category_column:
@@ -510,17 +603,20 @@ def write_domain_charts(rows, columns, numeric_columns, date_columns, category_c
         return chart_count
 
     chart_count += write_missing_chart(ARTIFACT_DIR / "missing_values.svg", missing)
-    if numeric_columns:
+    if numeric_columns and first_business_numeric(numeric_columns):
+        histogram_column = first_business_numeric(numeric_columns)
         chart_count += write_histogram_chart(
-            ARTIFACT_DIR / f"histogram_{safe_name(numeric_columns[0])}.svg",
+            ARTIFACT_DIR / f"histogram_{safe_name(histogram_column)}.svg",
             rows,
-            numeric_columns[0],
+            histogram_column,
         )
-    if category_columns:
+    role_categories = [column for column in [channel_column, status_column, geography_column, category_column] if column]
+    grouped_columns = role_categories or category_columns[:1]
+    for column in grouped_columns[:3]:
         chart_count += write_category_chart(
-            ARTIFACT_DIR / f"category_{safe_name(category_columns[0])}.svg",
+            ARTIFACT_DIR / f"category_{safe_name(column)}.svg",
             rows,
-            category_columns[0],
+            column,
             revenue_column,
         )
     if date_columns and revenue_column:

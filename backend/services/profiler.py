@@ -8,6 +8,8 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from services.normalization import parse_locale_number
+
 
 MAX_SAMPLE_ROWS = 5
 
@@ -184,11 +186,7 @@ def _is_integer(value: str) -> bool:
 
 
 def _is_number(value: str) -> bool:
-    try:
-        float(value)
-    except ValueError:
-        return False
-    return True
+    return parse_locale_number(value) is not None
 
 
 def _is_date(value: str) -> bool:

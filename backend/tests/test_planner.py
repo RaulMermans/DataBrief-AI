@@ -83,3 +83,24 @@ def test_generate_ecommerce_plan_includes_purchase_history_spend_kpis() -> None:
 
     assert "Total estimated spend" in plan["likely_kpis"]
     assert "Average item price from unit_price" in plan["likely_kpis"]
+
+
+def test_generate_plan_includes_revenue_order_kpis_for_spanish_total() -> None:
+    profile = {
+        "inferred_types": {
+            "ID": "integer",
+            "Cliente": "string",
+            "Fecha": "date",
+            "Total": "number",
+            "Pago": "string",
+            "Estado": "string",
+        },
+        "sample_rows": [{"ID": "1", "Cliente": "Ada", "Total": "24,67 €"}],
+    }
+    route = {"dataset_type": "sales", "dataset_subtype": "transactional_orders"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert "Total revenue" in plan["likely_kpis"]
+    assert "Average order value" in plan["likely_kpis"]
+    assert "Order count from ID" in plan["likely_kpis"]
