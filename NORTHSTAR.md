@@ -253,6 +253,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - 2026-04-28: Fixed backend service-root startup compatibility for Vercel Services by removing remaining `backend.*` test imports and restoring the tracked retry runner module required by `main.py`. Backend `/health` smoke test passes under top-level `main.py` import semantics; 124 backend tests passing.
 - 2026-04-28: Polished Phase 6 failure and report quality paths: structured API errors, safer frontend upload parsing, deterministic ecommerce/finance routing, ecommerce-specific plans/KPIs/charts, business-first report ordering, grounded conditional recommendations, and readable sample-row tables.
 - 2026-04-30: Completed Sprint B analytical-quality upgrade: strengthened deterministic ecommerce/purchase-history routing, added route-aware KPI priority and spend calculation, improved findings/recommendations/chart selection, and exposed dataset limitations/confidence framing. Backend tests: 136 passing.
+- 2026-04-30: Completed Phase C Sprint 1 report presentation polish: moved dataset/status framing into the report, separated primary/structural/warning KPI groups, improved findings/recommendation/quality section hierarchy, placed charts before limitations, and added graceful chart preview fallback.
 
 ---
 

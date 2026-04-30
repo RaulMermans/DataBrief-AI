@@ -219,22 +219,14 @@ export default function Home() {
 
       {result ? (
         <section className="results">
-          {/* Route banner */}
-          <div className="routeBanner">
-            <div>
-              <p className="eyebrow">Detected dataset type</p>
-              <h2>{result.route.dataset_type}</h2>
-            </div>
-            <div className="confidence">
-              {Math.round(result.route.confidence * 100)}%
-            </div>
-            <p>{result.route.explanation}</p>
-          </div>
-
           {/* ----------------------------------------------------------------
               PHASE 5 — Final report
           ---------------------------------------------------------------- */}
-          <FinalReport report={result.report} apiBase={API_BASE_URL} />
+          <FinalReport
+            report={result.report}
+            route={result.route}
+            apiBase={API_BASE_URL}
+          />
 
           {/* Profile cards */}
           <div className="cards">
@@ -466,32 +458,98 @@ function flagClass(flag: string) {
   return "flagWarn";
 }
 
+function formatKpiValue(value: string | number) {
+  return typeof value === "number" ? value.toLocaleString() : value;
+}
+
+function humanizeLabel(label: string) {
+  return label.replace(/_/g, " ");
+}
+
+function splitKpiCards(cards: KpiCard[]) {
+  return cards.reduce(
+    (groups, card) => {
+      const label = card.label.toLowerCase();
+      if (label === "rows" || label === "columns") {
+        groups.structural.push(card);
+      } else if (
+        label.includes("duplicate") ||
+        label.includes("missing") ||
+        label.includes("warning") ||
+        label.includes("error") ||
+        label.includes("return/cancel")
+      ) {
+        groups.warning.push(card);
+      } else {
+        groups.primary.push(card);
+      }
+      return groups;
+    },
+    {
+      primary: [] as KpiCard[],
+      structural: [] as KpiCard[],
+      warning: [] as KpiCard[],
+    }
+  );
+}
+
 function FinalReport({
   report,
+  route,
   apiBase,
 }: {
   report: ReportPayload;
+  route: DatasetRoute;
   apiBase: string;
 }) {
+  const kpis = splitKpiCards(report.kpi_cards);
+
   return (
     <section className="panel reportPanel">
       <div className="reportHeader">
-        <h2>Analysis report</h2>
-        <span className={`outcomeBadge ${outcomeClass(report.is_partial ? "recoverable" : "success")}`}>
-          {report.is_partial ? "Partial results" : "Complete"}
-        </span>
+        <div>
+          <p className="eyebrow">Analysis report</p>
+          <h2>{humanizeLabel(route.dataset_type)} dataset</h2>
+        </div>
+        <div className="reportHeaderBadges">
+          <span className="confidence">
+            {Math.round(route.confidence * 100)}% confidence
+          </span>
+          <span
+            className={`outcomeBadge ${outcomeClass(
+              report.is_partial ? "recoverable" : "success"
+            )}`}
+          >
+            {report.is_partial ? "Partial results" : "Complete"}
+          </span>
+        </div>
       </div>
 
-      {/* Evaluator note */}
-      {report.evaluator_note ? (
-        <p className="evaluatorNote">{report.evaluator_note}</p>
-      ) : null}
+      <div className="reportStatusGrid">
+        <div>
+          <span>Dataset type</span>
+          <strong>{humanizeLabel(route.dataset_type)}</strong>
+          <p>{route.explanation}</p>
+        </div>
+        <div>
+          <span>Execution status</span>
+          <strong>{report.is_partial ? "Partial report" : "Complete report"}</strong>
+          {report.evaluator_note ? <p>{report.evaluator_note}</p> : null}
+        </div>
+      </div>
 
       {/* Groundedness revision notice */}
       {report.revised ? (
         <div className="revisionNotice">
-          ⚠ Report was revised: {report.revision_note}
+          Report was revised: {report.revision_note}
         </div>
+      ) : null}
+
+      {/* Confidence note */}
+      {report.confidence_note ? (
+        <p className="confidenceNote topConfidenceNote">
+          {report.confidence_note}
+        </p>
       ) : null}
 
       {/* Executive summary */}
@@ -505,19 +563,22 @@ function FinalReport({
       {/* KPI cards */}
       {report.kpi_cards.length > 0 ? (
         <div className="reportSection">
-          <h3>Key metrics</h3>
-          <div className="kpiGrid">
-            {report.kpi_cards.map((card) => (
-              <div className="kpiCard" key={card.label}>
-                <span className="kpiLabel">{card.label}</span>
-                <strong className="kpiValue">
-                  {typeof card.value === "number"
-                    ? card.value.toLocaleString()
-                    : card.value}
-                </strong>
-              </div>
-            ))}
-          </div>
+          <h3>Primary KPIs</h3>
+          {kpis.primary.length > 0 ? (
+            <KpiGroup cards={kpis.primary} variant="primary" />
+          ) : null}
+          {kpis.warning.length > 0 ? (
+            <>
+              <h4 className="kpiGroupTitle">Warning metrics</h4>
+              <KpiGroup cards={kpis.warning} variant="warning" />
+            </>
+          ) : null}
+          {kpis.structural.length > 0 ? (
+            <>
+              <h4 className="kpiGroupTitle">Dataset structure</h4>
+              <KpiGroup cards={kpis.structural} variant="structural" />
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -525,76 +586,30 @@ function FinalReport({
       {report.top_findings.length > 0 ? (
         <div className="reportSection">
           <h3>Top findings</h3>
-          <ul className="findingsList">
+          <ol className="rankedList">
             {report.top_findings.map((f, i) => (
-              <li key={i}>{f.description}</li>
+              <li key={i}>
+                <span>{i + 1}</span>
+                <p>{f.description}</p>
+              </li>
             ))}
-          </ul>
+          </ol>
         </div>
       ) : null}
 
-      {/* Anomaly table */}
-      {report.anomaly_table.length > 0 ? (
-        <div className="reportSection">
-          <h3>Anomaly checks</h3>
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Check</th>
-                  <th>Value</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.anomaly_table.map((row, i) => (
-                  <tr key={i}>
-                    <td>{row.check}</td>
-                    <td>{String(row.value)}</td>
-                    <td>
-                      <span className={`flagBadge ${flagClass(row.flag)}`}>
-                        {row.flag}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Data quality warnings */}
-      {report.data_quality_warnings.length > 0 ? (
-        <div className="reportSection">
-          <h3>Data quality warnings</h3>
-          <ul className="warnings">
-            {report.data_quality_warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-        </div>
+      {/* Anomalies and data quality */}
+      {report.anomaly_table.length > 0 ||
+      report.data_quality_warnings.length > 0 ? (
+        <QualitySection report={report} />
       ) : null}
 
       {/* Business recommendations */}
       {report.business_recommendations.length > 0 ? (
         <div className="reportSection">
           <h3>Recommendations</h3>
-          <ul className="findingsList">
+          <ul className="recommendationList">
             {report.business_recommendations.map((r, i) => (
               <li key={i}>{r}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {/* Dataset limitations */}
-      {report.dataset_limitations.length > 0 ? (
-        <div className="reportSection">
-          <h3>Dataset limitations</h3>
-          <ul className="findingsList">
-            {report.dataset_limitations.map((item, i) => (
-              <li key={i}>{item}</li>
             ))}
           </ul>
         </div>
@@ -604,26 +619,111 @@ function FinalReport({
       {report.chart_artifacts.length > 0 ? (
         <div className="reportSection">
           <h3>Charts</h3>
-          <div className="artifactGrid">
+          <div className="chartGrid">
             {report.chart_artifacts.map((url) => {
               const name = url.split("/").pop() ?? url;
               return (
-                <div className="artifactItem" key={url}>
-                  <strong>{name}</strong>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img alt={name} src={`${apiBase}${url}`} />
-                </div>
+                <ChartPreview key={url} name={name} src={`${apiBase}${url}`} />
               );
             })}
           </div>
         </div>
       ) : null}
 
-      {/* Confidence note */}
-      {report.confidence_note ? (
-        <p className="confidenceNote">{report.confidence_note}</p>
+      {/* Dataset limitations */}
+      {report.dataset_limitations.length > 0 ? (
+        <div className="reportSection">
+          <h3>Dataset limitations</h3>
+          <ul className="limitationList">
+            {report.dataset_limitations.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </section>
+  );
+}
+
+function KpiGroup({
+  cards,
+  variant,
+}: {
+  cards: KpiCard[];
+  variant: "primary" | "structural" | "warning";
+}) {
+  return (
+    <div className={`kpiGrid kpiGrid-${variant}`}>
+      {cards.map((card) => (
+        <div className={`kpiCard kpiCard-${variant}`} key={card.label}>
+          <span className="kpiLabel">{humanizeLabel(card.label)}</span>
+          <strong className="kpiValue">{formatKpiValue(card.value)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function QualitySection({ report }: { report: ReportPayload }) {
+  return (
+    <div className="reportSection qualitySection">
+      <h3>Anomalies and data quality</h3>
+      {report.data_quality_warnings.length > 0 ? (
+        <ul className="qualityWarnings">
+          {report.data_quality_warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">No data quality warnings detected.</p>
+      )}
+
+      {report.anomaly_table.length > 0 ? (
+        <div className="tableWrap qualityTableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Check</th>
+                <th>Value</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.anomaly_table.map((row, i) => (
+                <tr key={i}>
+                  <td>{row.check}</td>
+                  <td>{String(row.value)}</td>
+                  <td>
+                    <span className={`flagBadge ${flagClass(row.flag)}`}>
+                      {row.flag}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ChartPreview({ name, src }: { name: string; src: string }) {
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <div className="chartItem">
+      <div className="chartTitle">{humanizeLabel(name.replace(/\.svg$/i, ""))}</div>
+      {hasError ? (
+        <div className="chartFallback">
+          Chart preview unavailable. Export artifacts are still available in
+          developer debug.
+        </div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt={name} src={src} onError={() => setHasError(true)} />
+      )}
+    </div>
   );
 }
 
