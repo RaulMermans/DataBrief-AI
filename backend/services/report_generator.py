@@ -69,6 +69,7 @@ class ReportPayload:
     anomaly_table: list[AnomalyRow] = field(default_factory=list)
     data_quality_warnings: list[str] = field(default_factory=list)
     business_recommendations: list[str] = field(default_factory=list)
+    dataset_limitations: list[str] = field(default_factory=list)
     confidence_note: str = ""
 
     # Meta
@@ -89,6 +90,7 @@ class ReportPayload:
             "anomaly_table": [r.to_dict() for r in self.anomaly_table],
             "data_quality_warnings": self.data_quality_warnings,
             "business_recommendations": self.business_recommendations,
+            "dataset_limitations": self.dataset_limitations,
             "confidence_note": self.confidence_note,
             "is_partial": self.is_partial,
             "evaluator_note": self.evaluator_note,
@@ -133,9 +135,7 @@ def generate_report(
     report.data_quality_warnings = list(warnings)
 
     # Chart artifacts (names only — URLs are provided by execution.artifacts)
-    report.chart_artifacts = [
-        a.url for a in execution.artifacts if a.content_type == "image/svg+xml"
-    ]
+    report.chart_artifacts = _prioritize_chart_artifacts(execution.artifacts, dataset_type)
 
     if evaluation.outcome != "success":
         # Partial results path: no computed kpis / summaries available.
@@ -149,6 +149,10 @@ def generate_report(
             "This is a partial result. Execution did not complete successfully. "
             "No computed KPIs or findings are available."
         )
+        report.dataset_limitations = [
+            "The dataset can support profiling only because generated analysis did not complete.",
+            "Computed business KPIs, charts, and recommendations are unavailable for this run.",
+        ]
         return report
 
     # --- Full report path ---
@@ -164,9 +168,12 @@ def generate_report(
 
     report.top_findings = _build_top_findings(
         dataset_type=dataset_type,
+        row_count=row_count,
         kpis=kpis,
         numeric_summary=numeric_summary,
         category_summary=category_summary,
+        duplicate_rows=dup_from_summary,
+        missing_cells=kpis.get("Missing cells", 0),
     )
 
     # Anomaly table
@@ -215,6 +222,11 @@ def generate_report(
             recommendations.append(
                 "Compare revenue by channel before reallocating acquisition effort."
             )
+    concentration = _highest_category_concentration(category_summary, row_count)
+    if concentration and concentration[2] >= 60:
+        recommendations.append(
+            f"Treat segment comparisons cautiously because {concentration[0]} is concentrated in '{concentration[1]}' at {concentration[2]}% of rows."
+        )
     if dup_from_summary > 0:
         recommendations.append(
             f"Review {dup_from_summary} duplicate row(s) before drawing conclusions."
@@ -223,9 +235,19 @@ def generate_report(
         recommendations.append(
             f"Address {missing_cells} missing cell(s) to improve analysis completeness."
         )
-    if not recommendations and plan_questions:
-        recommendations.append(f"Investigate: {plan_questions[0]}")
+    if warnings:
+        recommendations.append(
+            "Review profile warning(s), including missing or duplicate data quality issues, before sharing conclusions."
+        )
     report.business_recommendations = recommendations
+
+    report.dataset_limitations = _build_dataset_limitations(
+        dataset_type=dataset_type,
+        profile=profile,
+        kpis=kpis,
+        category_summary=category_summary,
+        chart_count=len(report.chart_artifacts),
+    )
 
     # Executive summary (3 sentences max, fully grounded)
     chart_count = len(report.chart_artifacts)
@@ -241,8 +263,7 @@ def generate_report(
     )
 
     report.confidence_note = (
-        f"All KPIs and findings above are computed from the uploaded file. "
-        f"Business recommendations are derived from the analysis plan and computed KPIs. "
+        f"All KPIs, findings, recommendations, and limitations above are derived from the uploaded file, profile, and summary.json. "
         f"No external data sources or assumptions are used. "
         f"Plan KPIs listed for reference: {', '.join(plan_kpis[:3]) or 'none'}."
     )
@@ -255,15 +276,23 @@ def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str,
     ecommerce_order = [
         "Gross sales",
         "Net revenue",
+        "Total estimated spend",
         "Gross margin",
         "Order count",
         "Units sold",
         "Average order value",
+        "Average item price",
         "Return/cancel rate",
         "Discount rate",
     ]
     sales_order = ["Total revenue", "Average revenue", "Total sales", "Average sales"]
-    preferred = ecommerce_order if dataset_type == "ecommerce" else sales_order
+    finance_order = ["Total amount", "Average amount", "Total debit", "Total credit", "Total balance"]
+    if dataset_type == "ecommerce":
+        preferred = ecommerce_order
+    elif dataset_type == "finance":
+        preferred = finance_order
+    else:
+        preferred = sales_order
     ordered: list[tuple[str, Any]] = []
     used: set[str] = set()
 
@@ -284,16 +313,20 @@ def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str,
 def _build_top_findings(
     *,
     dataset_type: str,
+    row_count: int,
     kpis: dict[str, Any],
     numeric_summary: dict[str, Any],
     category_summary: dict[str, Any],
+    duplicate_rows: int,
+    missing_cells: int,
 ) -> list[Finding]:
     findings: list[Finding] = []
 
     if dataset_type == "ecommerce":
-        if "Net revenue" in kpis and "Order count" in kpis:
+        revenue_label = "Net revenue" if "Net revenue" in kpis else "Total estimated spend"
+        if revenue_label in kpis and "Order count" in kpis:
             findings.append(Finding(
-                description=f"Net revenue is {kpis['Net revenue']} across {kpis['Order count']} order(s).",
+                description=f"{revenue_label} is {kpis[revenue_label]} across {kpis['Order count']} order(s).",
                 source="summary.json:kpis",
             ))
         if "Average order value" in kpis:
@@ -312,22 +345,37 @@ def _build_top_findings(
                 source="summary.json:kpis",
             ))
 
+    concentration_findings: list[Finding] = []
     for col, counts in category_summary.items():
         if counts:
             top_label, top_count = counts[0]
-            desc = f"{col}: '{top_label}' is the largest observed segment with {top_count} row(s)."
-            findings.append(Finding(description=desc, source=f"summary.json:category_summary:{col}"))
-        if len(findings) >= 6:
-            break
+            share = round((float(top_count) / row_count) * 100, 1) if row_count else 0
+            desc = f"{col}: '{top_label}' is the largest observed segment with {top_count} row(s), representing {share}% of the dataset."
+            concentration_findings.append(Finding(description=desc, source=f"summary.json:category_summary:{col}"))
+    findings.extend(sorted(concentration_findings, key=lambda f: _percent_in_text(f.description), reverse=True))
 
     for col, stats in numeric_summary.items():
+        min_value = stats.get("min")
+        max_value = stats.get("max")
+        mean_value = stats.get("mean")
         desc = (
-            f"{col}: total={stats.get('sum')}, average={stats.get('mean')}, "
-            f"range={stats.get('min')} to {stats.get('max')}."
+            f"{col}: total={stats.get('sum')}, average={mean_value}, "
+            f"range={min_value} to {max_value}."
         )
         findings.append(Finding(description=desc, source=f"summary.json:numeric_summary:{col}"))
         if len(findings) >= 8:
             break
+
+    if duplicate_rows > 0:
+        findings.append(Finding(
+            description=f"Data quality risk: {duplicate_rows} duplicate row(s) were detected.",
+            source="summary.json:kpis",
+        ))
+    if missing_cells > 0:
+        findings.append(Finding(
+            description=f"Data quality risk: {missing_cells} missing cell(s) were detected.",
+            source="summary.json:kpis",
+        ))
 
     return findings[:8]
 
@@ -337,3 +385,95 @@ def _numeric_kpi(kpis: dict[str, Any], label: str) -> float:
     if isinstance(value, (int, float)):
         return float(value)
     return 0.0
+
+
+def _prioritize_chart_artifacts(artifacts: list[ArtifactMetadata], dataset_type: str) -> list[str]:
+    charts = [a.url for a in artifacts if a.content_type == "image/svg+xml" and a.size_bytes > 0]
+    if dataset_type == "ecommerce":
+        priority = [
+            "revenue_by_category",
+            "revenue_by_channel",
+            "revenue_by_device",
+            "revenue_trend",
+            "status_distribution",
+            "margin_by",
+            "missing_values",
+        ]
+    elif dataset_type == "finance":
+        priority = ["time_", "category_", "histogram_", "missing_values"]
+    else:
+        priority = ["time_", "category_", "histogram_", "missing_values"]
+
+    def sort_key(url: str) -> tuple[int, str]:
+        name = url.split("/")[-1].lower()
+        for index, token in enumerate(priority):
+            if token in name:
+                return (index, name)
+        return (len(priority), name)
+
+    return sorted(charts, key=sort_key)[:5]
+
+
+def _highest_category_concentration(
+    category_summary: dict[str, Any], row_count: int
+) -> tuple[str, str, float] | None:
+    best: tuple[str, str, float] | None = None
+    if row_count <= 0:
+        return None
+    for col, counts in category_summary.items():
+        if not counts:
+            continue
+        label, count = counts[0]
+        share = round((float(count) / row_count) * 100, 1)
+        if best is None or share > best[2]:
+            best = (col, str(label), share)
+    return best
+
+
+def _build_dataset_limitations(
+    *,
+    dataset_type: str,
+    profile: dict[str, Any],
+    kpis: dict[str, Any],
+    category_summary: dict[str, Any],
+    chart_count: int,
+) -> list[str]:
+    columns = [column.lower() for column in profile.get("inferred_types", {}).keys()]
+    limitations: list[str] = []
+    if dataset_type == "ecommerce":
+        if "Net revenue" in kpis or "Total estimated spend" in kpis:
+            limitations.append("Supports transaction-level spend and volume analysis from the uploaded fields.")
+        missing_fields = []
+        if not _has_named_column(columns, ["order"]):
+            missing_fields.append("order id")
+        if not _has_named_column(columns, ["return", "refund", "cancel", "status"]):
+            missing_fields.append("return/cancel status")
+        if not _has_named_column(columns, ["channel", "source", "device", "region", "country", "state", "city"]):
+            missing_fields.append("channel/device/geography")
+        if missing_fields:
+            limitations.append(f"Does not fully support {', '.join(missing_fields)} analysis because those fields are missing.")
+    elif dataset_type == "finance":
+        limitations.append("Supports financial amount summaries by available account, category, and date fields.")
+    else:
+        limitations.append("Supports structural profiling and summaries for detected numeric and categorical fields.")
+    if not category_summary:
+        limitations.append("Segment comparisons are limited because no categorical summaries were computed.")
+    if chart_count == 0:
+        limitations.append("Chart support is limited for this dataset because no useful SVG chart artifact was produced.")
+    limitations.append("Does not establish causality or benchmark performance without external reference data.")
+    return limitations
+
+
+def _has_named_column(columns: list[str], tokens: list[str]) -> bool:
+    return any(any(token in column for token in tokens) for column in columns)
+
+
+def _percent_in_text(text: str) -> float:
+    marker = "% of the dataset"
+    if marker not in text:
+        return 0.0
+    try:
+        prefix = text.split(marker, 1)[0].rsplit(" ", 1)[-1]
+        return float(prefix)
+    except ValueError:
+        return 0.0

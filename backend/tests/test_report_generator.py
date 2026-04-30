@@ -168,7 +168,8 @@ def test_generate_report_to_dict_complete():
     required_keys = {
         "executive_summary", "kpi_cards", "top_findings", "anomaly_table",
         "data_quality_warnings", "business_recommendations", "confidence_note",
-        "is_partial", "evaluator_note", "chart_artifacts", "revised", "revision_note",
+        "dataset_limitations", "is_partial", "evaluator_note", "chart_artifacts",
+        "revised", "revision_note",
     }
     assert required_keys.issubset(d.keys())
 
@@ -218,3 +219,87 @@ def test_generate_report_prioritizes_ecommerce_business_kpis(tmp_path):
     ]
     assert any("Return/cancel rate" in finding.description for finding in report.top_findings)
     assert any("discount" in rec.lower() for rec in report.business_recommendations)
+    assert any("Supports transaction-level spend" in item for item in report.dataset_limitations)
+
+
+def test_generate_report_prioritizes_purchase_history_kpis_and_limitations(tmp_path):
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(
+        """{
+          "dataset_type": "ecommerce",
+          "row_count": 4,
+          "column_count": 6,
+          "duplicate_rows": 0,
+          "kpis": {
+            "Rows": 4,
+            "Columns": 6,
+            "Total estimated spend": 250,
+            "Units sold": 10,
+            "Average item price": 25,
+            "Order count": 4
+          },
+          "numeric_summary": {"unit_price": {"count": 4, "sum": 100, "mean": 25, "min": 10, "max": 40}},
+          "category_summary": {"category": [["Books", 3], ["Games", 1]]}
+        }""",
+        encoding="utf-8",
+    )
+    artifact = ArtifactMetadata(
+        name="summary.json",
+        path=str(summary_path),
+        size_bytes=summary_path.stat().st_size,
+        content_type="application/json",
+        url="/api/runs/run/summary.json",
+    )
+
+    report = generate_report(
+        profile={
+            "row_count": 4,
+            "column_count": 6,
+            "duplicate_rows": 0,
+            "inferred_types": {
+                "purchase_date": "date",
+                "item_name": "string",
+                "category": "string",
+                "quantity": "integer",
+                "unit_price": "number",
+            },
+            "missing_percent_by_column": {},
+            "warnings": [],
+            "sample_rows": [],
+        },
+        route={"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "purchase-history"},
+        plan={"likely_kpis": [], "business_questions": [], "recommended_transformations": [], "recommended_charts": [], "anomaly_checks": []},
+        evaluation=_SUCCESS_EVALUATION,
+        execution=_success_execution(artifacts=[artifact]),
+    )
+
+    assert [card.label for card in report.kpi_cards[:4]] == [
+        "Total estimated spend",
+        "Order count",
+        "Units sold",
+        "Average item price",
+    ]
+    assert any("75.0% of the dataset" in finding.description for finding in report.top_findings)
+    assert any("order id" in item for item in report.dataset_limitations)
+
+
+def test_generate_report_prioritizes_domain_charts():
+    artifacts = [
+        _artifact("missing_values.svg", "image/svg+xml"),
+        _artifact("histogram_quantity.svg", "image/svg+xml"),
+        _artifact("revenue_by_channel.svg", "image/svg+xml"),
+        _artifact("revenue_by_category.svg", "image/svg+xml"),
+    ]
+
+    report = generate_report(
+        profile=_ECOMMERCE_PROFILE,
+        route={"dataset_type": "ecommerce", "confidence": 0.95, "explanation": "test"},
+        plan={"likely_kpis": [], "business_questions": [], "recommended_transformations": [], "recommended_charts": [], "anomaly_checks": []},
+        evaluation=_SUCCESS_EVALUATION,
+        execution=_success_execution(artifacts=artifacts),
+    )
+
+    assert report.chart_artifacts[:2] == [
+        "/api/runs/run/revenue_by_category.svg",
+        "/api/runs/run/revenue_by_channel.svg",
+    ]

@@ -45,6 +45,8 @@ ECOMMERCE_SIGNALS = {
     "price",
     "product",
     "purchase",
+    "purchased",
+    "purchases",
     "quantity",
     "refund",
     "return",
@@ -52,6 +54,22 @@ ECOMMERCE_SIGNALS = {
     "revenue",
     "sku",
     "status",
+    "units",
+}
+
+PURCHASE_HISTORY_SIGNALS = {
+    "buyer",
+    "category",
+    "customer",
+    "item",
+    "price",
+    "product",
+    "purchase",
+    "purchased",
+    "purchases",
+    "quantity",
+    "sku",
+    "transaction",
     "units",
 }
 
@@ -97,6 +115,7 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
         tokens.update(part for part in column.replace("-", "_").split("_") if part)
 
     ecommerce_matched = sorted(tokens.intersection(ECOMMERCE_SIGNALS))
+    purchase_matched = sorted(tokens.intersection(PURCHASE_HISTORY_SIGNALS))
     finance_matched = sorted(tokens.intersection(FINANCE_SIGNALS))
     sales_matched = sorted(tokens.intersection(SALES_SIGNALS))
     has_numeric_measure = any(
@@ -108,9 +127,11 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
         for inferred_type in profile.get("inferred_types", {}).values()
     )
     has_order_signal = _has_column(columns, ["order", "order_id", "order_number"])
+    has_purchase_signal = _has_column(columns, ["purchase", "transaction"])
     has_product_signal = _has_column(columns, ["product", "sku", "item", "category"])
     has_channel_signal = _has_column(columns, ["channel", "device", "payment", "status"])
-    has_revenue_signal = _has_column(columns, ["revenue", "amount", "sales", "total", "price", "gross", "net"])
+    has_quantity_signal = _has_column(columns, ["quantity", "qty", "units"])
+    has_revenue_signal = _has_column(columns, ["revenue", "amount", "sales", "total", "price", "gross", "net", "spend"])
     ecommerce_specific = tokens.intersection(
         {
             "cart",
@@ -134,19 +155,33 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
     ecommerce_score = (
         len(ecommerce_matched)
         + (2 if has_order_signal and has_product_signal else 0)
+        + (2 if has_purchase_signal and has_product_signal else 0)
         + (1 if has_channel_signal else 0)
         + (1 if has_numeric_measure and has_revenue_signal else 0)
-        + (1 if has_date and has_order_signal else 0)
+        + (1 if has_quantity_signal and has_revenue_signal else 0)
+        + (1 if has_date and (has_order_signal or has_purchase_signal) else 0)
     )
-    if has_order_signal and has_product_signal and len(ecommerce_specific) >= 2 and ecommerce_score >= 6:
+    purchase_history_score = (
+        len(purchase_matched)
+        + (2 if has_purchase_signal else 0)
+        + (2 if has_product_signal and has_quantity_signal and has_revenue_signal else 0)
+        + (1 if has_date else 0)
+    )
+    if (
+        (has_order_signal and has_product_signal and len(ecommerce_specific) >= 2 and ecommerce_score >= 6)
+        or (purchase_history_score >= 7 and has_product_signal and has_revenue_signal)
+    ):
         confidence = min(0.96, 0.58 + (ecommerce_score * 0.06))
-        rationale = ecommerce_matched[:6]
+        if purchase_history_score > ecommerce_score:
+            confidence = min(0.94, 0.6 + (purchase_history_score * 0.05))
+        rationale = sorted(set(ecommerce_matched + purchase_matched))[:6]
+        variant = "purchase-history/ecommerce" if purchase_history_score > ecommerce_score else "ecommerce transaction"
         return DatasetRoute(
             dataset_type="ecommerce",
             confidence=round(confidence, 2),
             explanation=(
-                "Matched ecommerce transaction signals: "
-                f"{', '.join(rationale)}. Orders/products plus revenue or channel fields "
+                f"Matched {variant} signals: "
+                f"{', '.join(rationale)}. Product, purchase/order, quantity, and value fields "
                 "fit the ecommerce workflow."
             ),
         )

@@ -121,6 +121,7 @@ def _ecommerce_plan(
     margin_column = _first_matching(columns, ["gross_margin", "margin", "profit"])
     order_column = _first_matching(columns, ["order_id", "order", "transaction"])
     units_column = _first_matching(columns, ["units", "quantity", "qty"])
+    price_column = _first_matching(columns, ["unit_price", "item_price", "price"])
     discount_column = _first_matching(columns, ["discount", "coupon"])
     category_column = _first_matching(columns, ["category", "product_type", "department", "product"])
     channel_column = _first_matching(columns, ["channel", "source", "campaign", "medium"])
@@ -136,6 +137,8 @@ def _ecommerce_plan(
             f"Order count from {order_column}" if order_column else "Order count",
             f"Units sold from {units_column}" if units_column else "Units sold",
             "Average order value",
+            "Total estimated spend" if units_column and price_column and not revenue_column else None,
+            f"Average item price from {price_column}" if price_column else None,
             f"Return/cancel rate from {status_column}" if status_column else "Return/cancel rate",
             f"Discount rate from {discount_column}" if discount_column else "Discount rate",
             f"Top categories by {category_column}" if category_column else "Top categories",
@@ -327,5 +330,5 @@ def _first_matching(columns: list[str], tokens: list[str]) -> str | None:
     return None
 
 
-def _dedupe(items: list[str]) -> list[str]:
-    return list(dict.fromkeys(items))
+def _dedupe(items: list[str | None]) -> list[str]:
+    return list(dict.fromkeys(item for item in items if item))

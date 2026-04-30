@@ -339,6 +339,7 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
     revenue_column = pick_revenue_measure(columns, numeric_columns)
     gross_column = pick_column(columns, ["gross_sales", "gross", "subtotal"], numeric_columns)
     units_column = pick_column(columns, ["quantity", "qty", "units"], numeric_columns)
+    price_column = pick_column(columns, ["unit_price", "item_price", "price"], numeric_columns)
     margin_column = pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
     discount_column = pick_column(columns, ["discount", "coupon"], numeric_columns)
     order_column = pick_column(columns, ["order_id", "order", "transaction"])
@@ -352,15 +353,15 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
             gross_values = numeric_values(rows, gross_column)
             if gross_values:
                 kpis["Gross sales"] = round(sum(gross_values), 2)
-        if revenue_column:
-            revenue_values = numeric_values(rows, revenue_column)
-            if revenue_values:
-                net_revenue = round(sum(revenue_values), 2)
-                kpis["Net revenue"] = net_revenue
-                order_count = distinct_count(rows, order_column) if order_column else len(rows)
-                kpis["Order count"] = order_count
-                if order_count:
-                    kpis["Average order value"] = round(net_revenue / order_count, 2)
+        revenue_values = spend_values(rows, revenue_column, units_column, price_column)
+        if revenue_values:
+            revenue_label = "Total estimated spend" if price_column and revenue_column == price_column else "Net revenue"
+            net_revenue = round(sum(revenue_values), 2)
+            kpis[revenue_label] = net_revenue
+            order_count = distinct_count(rows, order_column) if order_column else len(rows)
+            kpis["Order count"] = order_count
+            if order_count:
+                kpis["Average order value"] = round(net_revenue / order_count, 2)
         if margin_column:
             margin_values = numeric_values(rows, margin_column)
             if margin_values:
@@ -369,6 +370,10 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
             units_values = numeric_values(rows, units_column)
             if units_values:
                 kpis["Units sold"] = round(sum(units_values), 2)
+        if price_column:
+            price_values = numeric_values(rows, price_column)
+            if price_values:
+                kpis["Average item price"] = round(statistics.fmean(price_values), 2)
         if discount_column:
             discount_values = numeric_values(rows, discount_column)
             if discount_values:
@@ -404,8 +409,22 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
 
 
 def pick_revenue_measure(columns, numeric_columns):
-    tokens = ("net_revenue", "revenue", "sales", "amount", "total", "price")
+    tokens = ("net_revenue", "revenue", "sales", "amount", "total", "spend", "price")
     return pick_column(columns, tokens, numeric_columns)
+
+
+def spend_values(rows, revenue_column, units_column, price_column):
+    if revenue_column and price_column and revenue_column == price_column and units_column:
+        values = []
+        for row in rows:
+            price = parse_float(row.get(price_column, ""))
+            quantity = parse_float(row.get(units_column, ""))
+            if price is not None and quantity is not None:
+                values.append(price * quantity)
+        return values
+    if revenue_column:
+        return numeric_values(rows, revenue_column)
+    return []
 
 
 def pick_column(columns, tokens, allowed_columns=None):

@@ -64,3 +64,22 @@ def test_generate_ecommerce_plan_prioritizes_business_kpis() -> None:
     assert any("Average order value" in item for item in plan["likely_kpis"])
     assert any("channel" in item.lower() for item in plan["recommended_charts"])
     assert any("return" in item.lower() for item in plan["anomaly_checks"])
+
+
+def test_generate_ecommerce_plan_includes_purchase_history_spend_kpis() -> None:
+    profile = {
+        "inferred_types": {
+            "purchase_date": "date",
+            "customer_id": "string",
+            "item_name": "string",
+            "category": "string",
+            "quantity": "integer",
+            "unit_price": "number",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "purchase-history"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert "Total estimated spend" in plan["likely_kpis"]
+    assert "Average item price from unit_price" in plan["likely_kpis"]

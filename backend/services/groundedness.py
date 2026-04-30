@@ -174,7 +174,11 @@ def _build_evidence_index(computed_facts: dict) -> dict[str, str]:
 
     # Generic structural tokens always considered grounded — they describe
     # shape, not computed values, so no specific source is required.
-    for generic in ("rows", "columns", "duplicate", "missing", "cells", "chart", "artifact"):
+    for generic in (
+        "rows", "columns", "duplicate", "missing", "cells", "chart", "artifact",
+        "profile", "warning", "warnings", "quality", "issues", "dataset", "fields",
+        "analysis", "external", "reference",
+    ):
         index[generic] = "profile:structural"
 
     return index

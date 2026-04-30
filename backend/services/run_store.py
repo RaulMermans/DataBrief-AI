@@ -122,6 +122,12 @@ class RunRecord:
             for r in recs:
                 lines.append(f"- {r}")
 
+        limitations = rpt.get("dataset_limitations", [])
+        if limitations:
+            lines.append("\n## Dataset Limitations\n")
+            for item in limitations:
+                lines.append(f"- {item}")
+
         note = rpt.get("confidence_note", "")
         if note:
             lines.append(f"\n---\n\n*{note}*")
@@ -147,6 +153,7 @@ class RunRecord:
             "anomaly_table": rpt.get("anomaly_table", []),
             "data_quality_warnings": rpt.get("data_quality_warnings", []),
             "business_recommendations": rpt.get("business_recommendations", []),
+            "dataset_limitations": rpt.get("dataset_limitations", []),
             "confidence_note": rpt.get("confidence_note", ""),
             "is_partial": rpt.get("is_partial", False),
             "groundedness": {

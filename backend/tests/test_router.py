@@ -50,6 +50,26 @@ def test_route_dataset_detects_ecommerce_transactions() -> None:
     assert "ecommerce" in route.explanation.lower()
 
 
+def test_route_dataset_detects_purchase_history_as_ecommerce() -> None:
+    route = route_dataset(
+        {
+            "inferred_types": {
+                "purchase_date": "date",
+                "customer_id": "string",
+                "item_name": "string",
+                "category": "string",
+                "quantity": "integer",
+                "unit_price": "number",
+                "city": "string",
+            }
+        }
+    )
+
+    assert route.dataset_type == "ecommerce"
+    assert route.confidence >= 0.8
+    assert "purchase-history" in route.explanation.lower()
+
+
 def test_route_dataset_detects_finance() -> None:
     route = route_dataset(
         {

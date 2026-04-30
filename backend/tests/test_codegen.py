@@ -56,3 +56,27 @@ def test_generate_python_script_keeps_ecommerce_domain(tmp_path: Path) -> None:
     assert '"dataset_type": "ecommerce"' in script.code
     assert "Average order value" in script.code
     assert "write_domain_charts" in script.code
+
+
+def test_generate_python_script_computes_purchase_history_spend(tmp_path: Path) -> None:
+    script = generate_python_script(
+        profile={
+            "inferred_types": {
+                "purchase_date": "date",
+                "item_name": "string",
+                "quantity": "integer",
+                "unit_price": "number",
+            }
+        },
+        route={"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "purchase-history"},
+        plan={
+            "likely_kpis": ["Total estimated spend", "Average item price"],
+            "recommended_charts": [],
+        },
+        input_file_path=tmp_path / "input.csv",
+        artifact_dir=tmp_path / "artifacts",
+    )
+
+    assert "spend_values" in script.code
+    assert "Total estimated spend" in script.code
+    assert "Average item price" in script.code

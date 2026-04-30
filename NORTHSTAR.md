@@ -252,6 +252,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - 2026-04-26: Implemented P0–P1 hardening: removed absolute paths from API responses, added TTL cleanup, strengthened sandbox AST checks (eval/exec/os.system/absolute paths), added summary.json schema validation, replaced replay-only retry with bounded repair runner (classifies failure type, modifies codegen context, max 2 repairs), replaced token-overlap groundedness with claim/evidence model (GroundedClaim with source/status/reason), added SQLite run metadata store (RunStore), added export endpoints (report.md, findings.json, analysis.py), added run status endpoint. 124 tests passing.
 - 2026-04-28: Fixed backend service-root startup compatibility for Vercel Services by removing remaining `backend.*` test imports and restoring the tracked retry runner module required by `main.py`. Backend `/health` smoke test passes under top-level `main.py` import semantics; 124 backend tests passing.
 - 2026-04-28: Polished Phase 6 failure and report quality paths: structured API errors, safer frontend upload parsing, deterministic ecommerce/finance routing, ecommerce-specific plans/KPIs/charts, business-first report ordering, grounded conditional recommendations, and readable sample-row tables.
+- 2026-04-30: Completed Sprint B analytical-quality upgrade: strengthened deterministic ecommerce/purchase-history routing, added route-aware KPI priority and spend calculation, improved findings/recommendations/chart selection, and exposed dataset limitations/confidence framing. Backend tests: 136 passing.
 
 ---
 

@@ -98,6 +98,7 @@ type ReportPayload = {
   anomaly_table: AnomalyRow[];
   data_quality_warnings: string[];
   business_recommendations: string[];
+  dataset_limitations: string[];
   confidence_note: string;
   is_partial: boolean;
   evaluator_note: string;
@@ -582,6 +583,18 @@ function FinalReport({
           <ul className="findingsList">
             {report.business_recommendations.map((r, i) => (
               <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Dataset limitations */}
+      {report.dataset_limitations.length > 0 ? (
+        <div className="reportSection">
+          <h3>Dataset limitations</h3>
+          <ul className="findingsList">
+            {report.dataset_limitations.map((item, i) => (
+              <li key={i}>{item}</li>
             ))}
           </ul>
         </div>
