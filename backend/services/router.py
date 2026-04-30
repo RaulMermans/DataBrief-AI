@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from services.semantic_profile import build_semantic_profile
+
 
 SALES_SIGNALS = {
     "amount",
@@ -99,16 +101,23 @@ class DatasetRoute:
     dataset_type: str
     confidence: float
     explanation: str
+    dataset_subtype: str = "generic"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "dataset_type": self.dataset_type,
             "confidence": self.confidence,
             "explanation": self.explanation,
+            "dataset_subtype": self.dataset_subtype,
         }
 
 
 def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
+    semantic = profile.get("semantic_profile") or build_semantic_profile(profile).to_dict()
+    semantic_route = _route_from_semantics(semantic)
+    if semantic_route:
+        return semantic_route
+
     columns = [column.lower() for column in profile.get("inferred_types", {}).keys()]
     tokens = set()
     for column in columns:
@@ -184,6 +193,7 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
                 f"{', '.join(rationale)}. Product, purchase/order, quantity, and value fields "
                 "fit the ecommerce workflow."
             ),
+            dataset_subtype="purchase_history" if purchase_history_score > ecommerce_score else "ecommerce_orders",
         )
 
     finance_score = (
@@ -197,6 +207,7 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
             dataset_type="finance",
             confidence=round(confidence, 2),
             explanation=f"Matched finance columns: {', '.join(finance_matched[:6])}.",
+            dataset_subtype="finance_expenses",
         )
 
     sales_score = len(sales_matched) + (1 if has_numeric_measure and sales_matched else 0)
@@ -206,6 +217,7 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
             dataset_type="sales",
             confidence=round(confidence, 2),
             explanation=f"Matched sales columns: {', '.join(sales_matched[:5])}.",
+            dataset_subtype="sales_pipeline",
         )
 
     return DatasetRoute(
@@ -214,7 +226,39 @@ def route_dataset(profile: dict[str, Any]) -> DatasetRoute:
         explanation=(
             "Only weak domain signals were found; using the generic dataset workflow."
         ),
+        dataset_subtype="generic",
     )
+
+
+def _route_from_semantics(semantic: dict[str, Any]) -> DatasetRoute | None:
+    subtype = semantic.get("dataset_subtype", "generic")
+    confidence = float(semantic.get("confidence", 0.0) or 0.0)
+    roles = semantic.get("column_roles", {})
+    if subtype == "transactional_orders" and confidence >= 0.65:
+        return DatasetRoute(
+            dataset_type="sales",
+            confidence=max(0.82, round(confidence, 2)),
+            explanation=(
+                "Matched semantic order signals: revenue, date, customer, "
+                "and payment/status fields fit the transactional orders workflow."
+            ),
+            dataset_subtype=subtype,
+        )
+    if subtype in {"purchase_history", "ecommerce_orders"} and confidence >= 0.65:
+        return DatasetRoute(
+            dataset_type="ecommerce",
+            confidence=max(0.82, round(confidence, 2)),
+            explanation=f"Matched semantic {subtype.replace('_', '-')} signals.",
+            dataset_subtype=subtype,
+        )
+    if subtype == "finance_expenses" and confidence >= 0.65:
+        return DatasetRoute(
+            dataset_type="finance",
+            confidence=max(0.78, round(confidence, 2)),
+            explanation="Matched semantic finance expense signals.",
+            dataset_subtype=subtype,
+        )
+    return None
 
 
 def _has_column(columns: list[str], tokens: list[str]) -> bool:

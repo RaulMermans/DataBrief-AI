@@ -1,6 +1,8 @@
 from pathlib import Path
+import json
 
 from services.codegen import generate_python_script
+from services.sandbox_runner import create_run_directory, execute_generated_code
 
 
 def test_generate_python_script_has_expected_shape(tmp_path: Path) -> None:
@@ -80,3 +82,59 @@ def test_generate_python_script_computes_purchase_history_spend(tmp_path: Path) 
     assert "spend_values" in script.code
     assert "Total estimated spend" in script.code
     assert "Average item price" in script.code
+
+
+def test_codegen_avoids_identifier_reference_charts(tmp_path: Path) -> None:
+    script = generate_python_script(
+        profile={
+            "inferred_types": {
+                "ID": "integer",
+                "Referencia": "integer",
+                "Fecha": "date",
+                "Total": "number",
+                "Cliente": "string",
+                "Pago": "string",
+                "Estado": "string",
+            },
+            "sample_rows": [{"ID": "1", "Referencia": "100", "Total": "24,67 €"}],
+        },
+        route={"dataset_type": "sales", "dataset_subtype": "transactional_orders"},
+        plan={"likely_kpis": ["Total revenue"], "recommended_charts": []},
+        input_file_path=tmp_path / "input.csv",
+        artifact_dir=tmp_path / "artifacts",
+    )
+
+    assert '"numeric_columns": [\n    "Total"\n  ]' in script.code
+    assert "histogram_id" not in script.code.lower()
+    assert "time_id" not in script.code.lower()
+
+
+def test_purchase_history_spend_executes_as_price_times_quantity(tmp_path: Path) -> None:
+    input_path = tmp_path / "purchase.csv"
+    input_path.write_text(
+        "purchase_date,item_name,quantity,unit_price\n"
+        "2026-01-01,Book,2,10\n"
+        "2026-01-02,Game,3,20\n",
+        encoding="utf-8",
+    )
+    run_id, run_dir, artifact_dir = create_run_directory()
+    generated = generate_python_script(
+        profile={
+            "inferred_types": {
+                "purchase_date": "date",
+                "item_name": "string",
+                "quantity": "integer",
+                "unit_price": "number",
+            }
+        },
+        route={"dataset_type": "ecommerce", "dataset_subtype": "purchase_history"},
+        plan={"likely_kpis": ["Total estimated spend"], "recommended_charts": []},
+        input_file_path=input_path,
+        artifact_dir=artifact_dir,
+    )
+
+    result = execute_generated_code(generated.code, run_id, run_dir, artifact_dir)
+    summary = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert result.status == "success"
+    assert summary["kpis"]["Total estimated spend"] == 80

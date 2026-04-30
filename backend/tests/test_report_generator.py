@@ -303,3 +303,61 @@ def test_generate_report_prioritizes_domain_charts():
         "/api/runs/run/revenue_by_category.svg",
         "/api/runs/run/revenue_by_channel.svg",
     ]
+
+
+def test_report_does_not_recommend_id_metrics(tmp_path):
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(
+        """{
+          "dataset_type": "sales",
+          "row_count": 2,
+          "column_count": 4,
+          "duplicate_rows": 0,
+          "kpis": {
+            "Total ID": 3,
+            "Average ID": 1.5,
+            "Total revenue": 30,
+            "Order count": 2,
+            "Average order value": 15,
+            "Rows": 2,
+            "Columns": 4
+          },
+          "numeric_summary": {"ID": {"count": 2, "sum": 3, "mean": 1.5, "min": 1, "max": 2}},
+          "category_summary": {}
+        }""",
+        encoding="utf-8",
+    )
+    artifact = ArtifactMetadata(
+        name="summary.json",
+        path=str(summary_path),
+        size_bytes=summary_path.stat().st_size,
+        content_type="application/json",
+        url="/api/runs/run/summary.json",
+    )
+
+    report = generate_report(
+        profile={
+            "row_count": 2,
+            "column_count": 4,
+            "duplicate_rows": 0,
+            "inferred_types": {"ID": "integer", "Total": "number"},
+            "semantic_profile": {
+                "limitations": ["No margin field detected"],
+                "column_roles": {"ID": "identifier", "Total": "revenue"},
+            },
+            "missing_percent_by_column": {},
+            "warnings": [],
+            "sample_rows": [],
+        },
+        route={"dataset_type": "sales", "dataset_subtype": "transactional_orders"},
+        plan={"likely_kpis": [], "business_questions": [], "recommended_transformations": [], "recommended_charts": [], "anomaly_checks": []},
+        evaluation=_SUCCESS_EVALUATION,
+        execution=_success_execution(artifacts=[artifact]),
+    )
+
+    labels = [card.label for card in report.kpi_cards]
+    text = " ".join(labels + [finding.description for finding in report.top_findings] + report.business_recommendations)
+    assert "Total ID" not in text
+    assert "Average ID" not in text
+    assert labels[:3] == ["Total revenue", "Order count", "Average order value"]
+    assert "No margin field detected" in report.dataset_limitations

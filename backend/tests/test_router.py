@@ -87,6 +87,28 @@ def test_route_dataset_detects_finance() -> None:
     assert route.confidence >= 0.75
 
 
+def test_spanish_order_dataset_routes_non_generic() -> None:
+    route = route_dataset(
+        {
+            "inferred_types": {
+                "ID": "integer",
+                "Referencia": "string",
+                "Cliente": "string",
+                "Fecha": "date",
+                "Total": "number",
+                "Pago": "string",
+                "Estado": "string",
+                "Entrega": "string",
+            },
+            "sample_rows": [],
+        }
+    )
+
+    assert route.dataset_type == "sales"
+    assert route.dataset_subtype == "transactional_orders"
+    assert route.dataset_type != "generic"
+
+
 def test_sample_datasets_route_sensibly() -> None:
     expected_routes = {
         "sample_sales.csv": "sales",

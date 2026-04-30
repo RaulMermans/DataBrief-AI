@@ -288,6 +288,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 
 ## Progress log
 - 2026-04-23 — NORTHSTAR initialized.
+- 2026-04-30: Added deterministic semantic profiling for localized business columns, locale-aware currency parsing, semantic routing/planning/codegen/reporting, and regression tests that keep identifier/reference fields out of primary metrics and charts.
 
 ## Reminder for coding agents
 Read only the active phase by default. Build that phase. Verify that phase. Update that phase.
