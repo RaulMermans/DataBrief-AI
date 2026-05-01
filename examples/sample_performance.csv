@@ -1,0 +1,26 @@
+date,rep,territory,product,revenue,quota,new_customer
+2026-01-05,Alice Chen,West,Analytics Pro,12400,10000,yes
+2026-01-06,Bob Torres,East,Analytics Pro,8900,10000,no
+2026-01-07,Alice Chen,West,Data Bridge,5500,6000,yes
+2026-01-08,Carol Kim,Central,Reporting Suite,14200,12000,yes
+2026-01-09,Bob Torres,East,Data Bridge,7800,6000,no
+2026-01-12,David Osei,South,Analytics Pro,11600,10000,yes
+2026-01-13,Alice Chen,West,Reporting Suite,9300,12000,no
+2026-01-14,Carol Kim,Central,Analytics Pro,15100,10000,yes
+2026-01-15,David Osei,South,Data Bridge,4200,6000,no
+2026-01-16,Bob Torres,East,Reporting Suite,13000,12000,yes
+2026-01-19,Alice Chen,West,Analytics Pro,10800,10000,no
+2026-01-20,Carol Kim,Central,Data Bridge,6700,6000,yes
+2026-01-21,David Osei,South,Reporting Suite,11200,12000,no
+2026-01-22,Bob Torres,East,Analytics Pro,9500,10000,no
+2026-01-23,Alice Chen,West,Data Bridge,5900,6000,yes
+2026-01-26,Carol Kim,Central,Analytics Pro,16300,10000,yes
+2026-01-27,David Osei,South,Analytics Pro,10200,10000,yes
+2026-01-28,Bob Torres,East,Data Bridge,8100,6000,no
+2026-01-29,Alice Chen,West,Reporting Suite,12700,12000,yes
+2026-01-30,Carol Kim,Central,Reporting Suite,17400,12000,yes
+2026-02-02,David Osei,South,Analytics Pro,13900,10000,yes
+2026-02-03,Bob Torres,East,Reporting Suite,10600,12000,no
+2026-02-04,Alice Chen,West,Analytics Pro,14500,10000,yes
+2026-02-05,Carol Kim,Central,Data Bridge,7300,6000,no
+2026-02-06,David Osei,South,Data Bridge,5800,6000,no

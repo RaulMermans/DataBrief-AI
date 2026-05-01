@@ -1,0 +1,27 @@
+date,campaign,channel,impressions,clicks,conversions,spend
+2026-01-01,Spring Launch,Paid Search,42000,1260,84,620.00
+2026-01-01,Spring Launch,Social Media,88000,2200,66,540.00
+2026-01-01,Brand Awareness,Display,210000,1050,21,380.00
+2026-01-08,Spring Launch,Paid Search,39000,1170,82,600.00
+2026-01-08,Spring Launch,Social Media,95000,2375,95,590.00
+2026-01-08,Brand Awareness,Display,230000,1150,23,390.00
+2026-01-08,Retargeting,Email,12000,840,109,180.00
+2026-01-15,Spring Launch,Paid Search,45000,1350,94,670.00
+2026-01-15,Spring Launch,Social Media,102000,2550,102,620.00
+2026-01-15,Brand Awareness,Display,198000,990,20,360.00
+2026-01-15,Retargeting,Email,14000,980,127,200.00
+2026-01-22,Spring Launch,Paid Search,51000,1530,107,740.00
+2026-01-22,Spring Launch,Social Media,114000,2850,114,680.00
+2026-01-22,Brand Awareness,Display,220000,1100,22,400.00
+2026-01-22,Retargeting,Email,16000,1120,145,220.00
+2026-01-29,Spring Launch,Paid Search,48000,1440,100,700.00
+2026-01-29,Spring Launch,Social Media,108000,2700,108,650.00
+2026-01-29,Brand Awareness,Display,215000,1075,22,395.00
+2026-01-29,Retargeting,Email,15000,1050,136,210.00
+2026-02-05,Summer Promo,Paid Search,55000,1650,115,780.00
+2026-02-05,Summer Promo,Social Media,120000,3000,120,720.00
+2026-02-05,Brand Awareness,Display,240000,1200,24,410.00
+2026-02-05,Retargeting,Email,18000,1260,163,240.00
+2026-02-12,Summer Promo,Paid Search,60000,1800,126,840.00
+2026-02-12,Summer Promo,Social Media,130000,3250,130,760.00
+2026-02-12,Retargeting,Email,20000,1400,182,260.00

@@ -11,8 +11,8 @@ EXCLUDED_ROLES = {"identifier", "reference"}
 
 _ROLE_TOKENS: list[tuple[str, tuple[str, ...]]] = [
     ("new_customer", ("nuevo cliente", "new customer", "new_customer", "first time customer")),
-    ("identifier", ("id", "identifier", "uuid")),
-    ("reference", ("referencia", "reference", "ref", "sku", "codigo", "code")),
+    ("identifier", ("id", "identifier", "uuid", "asin", "isbn", "response id", "responseid")),
+    ("reference", ("referencia", "reference", "ref", "sku", "codigo", "code", "product code")),
     ("date", ("fecha", "date", "created", "ordered", "purchase date", "transaction date")),
     ("revenue", ("total", "importe", "amount", "revenue", "sales", "gross", "net", "spend")),
     ("price", ("precio", "price", "unit price", "item price")),
@@ -121,15 +121,28 @@ def _infer_dataset_subtype(column_roles: dict[str, str]) -> str:
 def _confidence(subtype: str, column_roles: dict[str, str]) -> float:
     if subtype == "generic":
         return 0.45
+    roles = set(column_roles.values())
     signal_count = sum(1 for role in column_roles.values() if role != "unknown")
-    return round(min(0.95, 0.55 + signal_count * 0.06), 2)
+    base = round(min(0.85, 0.55 + signal_count * 0.06), 2)
+    # Cap lower when business-critical fields are absent — interpretation is limited
+    has_order_id = any(role == "identifier" for role in roles)
+    has_status = "status" in roles
+    if not has_order_id and not has_status:
+        base = min(base, 0.78)
+    elif not has_order_id or not has_status:
+        base = min(base, 0.82)
+    return base
 
 
 def _usable_metrics(column_roles: dict[str, str]) -> list[str]:
     roles = set(column_roles.values())
     metrics: list[str] = []
+    has_order_id = "identifier" in roles
     if "revenue" in roles:
-        metrics.extend(["revenue", "average_order_value"])
+        if has_order_id:
+            metrics.extend(["revenue", "average_order_value"])
+        else:
+            metrics.extend(["revenue", "average_spend_per_row"])
     if "price" in roles and "quantity" in roles:
         metrics.append("estimated_spend")
     if "quantity" in roles:
@@ -137,7 +150,12 @@ def _usable_metrics(column_roles: dict[str, str]) -> list[str]:
     if "new_customer" in roles:
         metrics.extend(["new_customer_count", "new_customer_rate"])
     if roles.intersection({"revenue", "price", "quantity"}):
-        metrics.append("order_count")
+        if has_order_id:
+            metrics.append("order_count")
+        else:
+            metrics.append("purchase_line_count")
+    if "status" in roles:
+        metrics.append("return_cancel_rate")
     return _dedupe(metrics)
 
 
@@ -152,6 +170,10 @@ def _limitations(column_roles: dict[str, str]) -> list[str]:
         limitations.append("No revenue or price/quantity spend fields detected")
     if "customer" not in roles:
         limitations.append("No customer field detected")
+    if "identifier" not in roles and "reference" not in roles:
+        limitations.append("No order ID detected; true order-level metrics are unavailable")
+    if "status" not in roles:
+        limitations.append("No return, refund, cancel, or status field detected; return/cancel rate is unavailable")
     return limitations
 
 
