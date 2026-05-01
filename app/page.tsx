@@ -108,6 +108,7 @@ type ReportPayload = {
 };
 
 type UploadResponse = {
+  run_id: string;
   filename: string;
   profile: Profile;
   route: DatasetRoute;
@@ -213,6 +214,18 @@ export default function Home() {
         <p className="uploadHint">
           CSV/XLSX only. Demo uploads are capped by the backend configuration.
         </p>
+        <div className="sampleButtons">
+          <span className="sampleLabel">Try a demo dataset:</span>
+          <a className="sampleLink" href="/examples/sample_ecommerce.csv" download>
+            Ecommerce purchases
+          </a>
+          <a className="sampleLink" href="/examples/sample_performance.csv" download>
+            Sales performance
+          </a>
+          <a className="sampleLink" href="/examples/sample_campaigns.csv" download>
+            Marketing campaigns
+          </a>
+        </div>
 
         {error ? <div className="error">{error}</div> : null}
       </section>
@@ -220,15 +233,16 @@ export default function Home() {
       {result ? (
         <section className="results">
           {/* ----------------------------------------------------------------
-              PHASE 5 — Final report
+              Report and exports
           ---------------------------------------------------------------- */}
           <FinalReport
             report={result.report}
             route={result.route}
+            runId={result.run_id}
             apiBase={API_BASE_URL}
           />
 
-          {/* Profile cards */}
+          {/* Dataset Overview */}
           <div className="cards">
             <MetricCard label="Rows" value={result.profile.row_count} />
             <MetricCard label="Columns" value={result.profile.column_count} />
@@ -241,7 +255,7 @@ export default function Home() {
 
           <div className="gridTwo">
             <section className="panel">
-              <h2>Column profile</h2>
+              <h2>Dataset overview</h2>
               <div className="columnList">
                 {Object.entries(result.profile.inferred_types).map(
                   ([column, type]) => (
@@ -261,7 +275,7 @@ export default function Home() {
             </section>
 
             <section className="panel">
-              <h2>Warnings</h2>
+              <h2>Data quality warnings</h2>
               {result.profile.warnings.length ? (
                 <ul className="warnings">
                   {result.profile.warnings.map((warning) => (
@@ -275,7 +289,7 @@ export default function Home() {
           </div>
 
           <section className="panel">
-            <h2>Analysis plan</h2>
+            <h2>Analysis plan and KPI targets</h2>
             <div className="planGrid">
               <PlanList title="Likely KPIs" items={result.plan.likely_kpis} />
               <PlanList
@@ -295,7 +309,7 @@ export default function Home() {
           </section>
 
           <section className="panel tablePanel">
-            <h2>Sample rows</h2>
+            <h2>Dataset preview</h2>
             <p className="muted tableHint">
               Showing the first {result.profile.sample_rows.length} profiled row(s).
             </p>
@@ -493,13 +507,21 @@ function splitKpiCards(cards: KpiCard[]) {
   );
 }
 
+function confidenceLabel(confidence: number): string {
+  if (confidence >= 0.8) return "Data confidence: High";
+  if (confidence >= 0.6) return "Data confidence: Medium";
+  return "Data confidence: Low";
+}
+
 function FinalReport({
   report,
   route,
+  runId,
   apiBase,
 }: {
   report: ReportPayload;
   route: DatasetRoute;
+  runId: string;
   apiBase: string;
 }) {
   const kpis = splitKpiCards(report.kpi_cards);
@@ -513,7 +535,7 @@ function FinalReport({
         </div>
         <div className="reportHeaderBadges">
           <span className="confidence">
-            {Math.round(route.confidence * 100)}% confidence
+            {confidenceLabel(route.confidence)}
           </span>
           <span
             className={`outcomeBadge ${outcomeClass(
@@ -560,16 +582,16 @@ function FinalReport({
         </div>
       ) : null}
 
-      {/* KPI cards */}
+      {/* Primary Metrics (KPI cards) */}
       {report.kpi_cards.length > 0 ? (
         <div className="reportSection">
-          <h3>Primary KPIs</h3>
+          <h3>Primary metrics</h3>
           {kpis.primary.length > 0 ? (
             <KpiGroup cards={kpis.primary} variant="primary" />
           ) : null}
           {kpis.warning.length > 0 ? (
             <>
-              <h4 className="kpiGroupTitle">Warning metrics</h4>
+              <h4 className="kpiGroupTitle">Data quality indicators</h4>
               <KpiGroup cards={kpis.warning} variant="warning" />
             </>
           ) : null}
@@ -597,7 +619,7 @@ function FinalReport({
         </div>
       ) : null}
 
-      {/* Anomalies and data quality */}
+      {/* Data quality warnings and anomaly checks */}
       {report.anomaly_table.length > 0 ||
       report.data_quality_warnings.length > 0 ? (
         <QualitySection report={report} />
@@ -615,7 +637,7 @@ function FinalReport({
         </div>
       ) : null}
 
-      {/* Chart artifacts */}
+      {/* Charts */}
       {report.chart_artifacts.length > 0 ? (
         <div className="reportSection">
           <h3>Charts</h3>
@@ -630,10 +652,10 @@ function FinalReport({
         </div>
       ) : null}
 
-      {/* Dataset limitations */}
+      {/* Limitations */}
       {report.dataset_limitations.length > 0 ? (
         <div className="reportSection">
-          <h3>Dataset limitations</h3>
+          <h3>Limitations</h3>
           <ul className="limitationList">
             {report.dataset_limitations.map((item, i) => (
               <li key={i}>{item}</li>
@@ -641,6 +663,34 @@ function FinalReport({
           </ul>
         </div>
       ) : null}
+
+      {/* Exports */}
+      <div className="reportSection">
+        <h3>Exports</h3>
+        <div className="exportRow">
+          <a
+            className="exportLink"
+            href={`${apiBase}/api/runs/${runId}/export/report.md`}
+            download="report.md"
+          >
+            Download report
+          </a>
+          <a
+            className="exportLink"
+            href={`${apiBase}/api/runs/${runId}/export/findings.json`}
+            download="findings.json"
+          >
+            Download findings
+          </a>
+          <a
+            className="exportLink"
+            href={`${apiBase}/api/runs/${runId}/export/analysis.py`}
+            download="analysis.py"
+          >
+            Download analysis script
+          </a>
+        </div>
+      </div>
     </section>
   );
 }
@@ -667,7 +717,7 @@ function KpiGroup({
 function QualitySection({ report }: { report: ReportPayload }) {
   return (
     <div className="reportSection qualitySection">
-      <h3>Anomalies and data quality</h3>
+      <h3>Data quality checks</h3>
       {report.data_quality_warnings.length > 0 ? (
         <ul className="qualityWarnings">
           {report.data_quality_warnings.map((warning) => (

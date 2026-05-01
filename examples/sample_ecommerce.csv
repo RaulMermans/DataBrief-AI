@@ -1,0 +1,31 @@
+purchase_date,item_name,category,quantity,unit_price,shipping_state
+2026-01-03,Running Shoes,Footwear,1,89.99,California
+2026-01-05,Yoga Mat,Sports,2,34.50,Texas
+2026-01-05,Water Bottle,Sports,3,19.99,New York
+2026-01-07,Trail Runners,Footwear,1,124.00,Florida
+2026-01-08,Resistance Bands,Sports,2,22.00,California
+2026-01-10,Basketball,Sports,1,45.00,Ohio
+2026-01-11,Hiking Boots,Footwear,1,149.99,Colorado
+2026-01-12,Foam Roller,Recovery,1,28.00,Texas
+2026-01-13,Protein Powder,Nutrition,2,54.99,New York
+2026-01-14,Gym Gloves,Accessories,2,18.50,California
+2026-01-15,Jump Rope,Sports,1,14.99,Florida
+2026-01-17,Cycling Shorts,Apparel,1,65.00,Oregon
+2026-01-18,Compression Socks,Apparel,3,24.99,California
+2026-01-19,Dumbbell Set,Strength,1,199.00,Texas
+2026-01-20,Tennis Racket,Sports,1,79.99,Arizona
+2026-01-21,Blender Bottle,Nutrition,2,16.00,New York
+2026-01-22,Swim Goggles,Swimming,1,22.99,Florida
+2026-01-24,Weightlifting Belt,Strength,1,59.99,Colorado
+2026-01-25,Running Socks,Footwear,4,12.50,Ohio
+2026-01-26,Pull-Up Bar,Strength,1,44.99,California
+2026-01-28,Yoga Blocks,Sports,2,17.00,Texas
+2026-01-29,Fitness Tracker,Electronics,1,89.99,New York
+2026-01-30,Insulated Bottle,Recovery,2,29.99,Oregon
+2026-02-01,Sports Bra,Apparel,2,48.00,California
+2026-02-02,Knee Sleeves,Recovery,1,38.00,Florida
+2026-02-03,Agility Ladder,Sports,1,32.99,Texas
+2026-02-04,Massage Gun,Recovery,1,149.99,New York
+2026-02-05,Boxing Gloves,Sports,1,69.99,California
+2026-02-06,Ankle Weights,Strength,2,26.50,Ohio
+2026-02-07,Cycling Helmet,Safety,1,89.00,Colorado

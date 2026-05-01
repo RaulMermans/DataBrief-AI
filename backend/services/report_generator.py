@@ -162,8 +162,11 @@ def generate_report(
     category_summary: dict[str, Any] = summary.get("category_summary", {})
     dup_from_summary = summary.get("duplicate_rows", dup_rows)
 
-    # KPI cards
+    # KPI cards — skip "Unavailable" sentinel values from primary display;
+    # they are surfaced as anomaly rows or limitations instead.
     for label, value in _prioritize_kpis(kpis, dataset_type):
+        if value == _UNAVAILABLE:
+            continue
         report.kpi_cards.append(KpiCard(label=label, value=value, source="summary.json:kpis"))
 
     report.top_findings = _build_top_findings(
@@ -190,6 +193,21 @@ def generate_report(
             flag="warning" if missing_cells > 0 else "ok",
         ),
     ]
+    # Surface unavailable ecommerce metrics explicitly
+    if dataset_type == "ecommerce":
+        return_rate_value = kpis.get("Return/cancel rate")
+        if return_rate_value == _UNAVAILABLE:
+            report.anomaly_table.append(AnomalyRow(
+                check="Return/cancel rate",
+                value="Unavailable — no return, refund, cancel, or status field detected",
+                flag="warning",
+            ))
+        if "Purchase line count" in kpis:
+            report.anomaly_table.append(AnomalyRow(
+                check="Order ID",
+                value="Not detected — true order count and AOV are unavailable",
+                flag="warning",
+            ))
     # Add data-quality warnings from profile as anomaly rows
     for warning in warnings:
         report.anomaly_table.append(
@@ -210,9 +228,10 @@ def generate_report(
             "they are computed directly from the uploaded data."
         )
     if dataset_type == "ecommerce":
-        if _numeric_kpi(kpis, "Return/cancel rate") > 0:
+        return_rate = kpis.get("Return/cancel rate")
+        if return_rate is not None and return_rate != _UNAVAILABLE and isinstance(return_rate, (int, float)) and return_rate > 0:
             recommendations.append(
-                f"Review return and cancellation drivers because Return/cancel rate is {kpis['Return/cancel rate']}%."
+                f"Review return and cancellation drivers because Return/cancel rate is {return_rate}%."
             )
         if _numeric_kpi(kpis, "Discount rate") > 0:
             recommendations.append(
@@ -262,13 +281,27 @@ def generate_report(
         f"{dup_from_summary} duplicate row(s) and {missing_cells} missing cell(s)."
     )
 
+    has_order_id = "Order count" in kpis
+    has_return_rate = kpis.get("Return/cancel rate") not in (None, _UNAVAILABLE)
+    if has_order_id and has_return_rate:
+        data_conf = "High"
+        biz_conf = "High"
+    elif has_order_id or has_return_rate:
+        data_conf = "High"
+        biz_conf = "Medium"
+    else:
+        data_conf = "High"
+        biz_conf = "Medium — order-level and return/cancel metrics are unavailable for this dataset"
     report.confidence_note = (
-        f"All KPIs, findings, recommendations, and limitations above are derived from the uploaded file, profile, and summary.json. "
-        f"No external data sources or assumptions are used. "
-        f"Plan KPIs listed for reference: {', '.join(plan_kpis[:3]) or 'none'}."
+        f"Data confidence: {data_conf}. Business interpretation: {biz_conf}. "
+        f"All KPIs, findings, and recommendations are derived from the uploaded file, profile, and summary.json. "
+        f"No external data sources or assumptions are used."
     )
 
     return report
+
+
+_UNAVAILABLE = "Unavailable"
 
 
 def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str, Any]]:
@@ -279,8 +312,10 @@ def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str,
         "Total estimated spend",
         "Gross margin",
         "Order count",
+        "Purchase line count",
         "Units sold",
         "Average order value",
+        "Average spend per row",
         "Average item price",
         "Return/cancel rate",
         "Discount rate",
@@ -288,7 +323,9 @@ def _prioritize_kpis(kpis: dict[str, Any], dataset_type: str) -> list[tuple[str,
     sales_order = [
         "Total revenue",
         "Order count",
+        "Purchase line count",
         "Average order value",
+        "Average spend per row",
         "New customer count",
         "New customer rate",
         "Average revenue",
@@ -338,14 +375,25 @@ def _build_top_findings(
                 description=f"{revenue_label} is {kpis[revenue_label]} across {kpis['Order count']} order(s).",
                 source="summary.json:kpis",
             ))
+        elif revenue_label in kpis and "Purchase line count" in kpis:
+            findings.append(Finding(
+                description=f"{revenue_label} is {kpis[revenue_label]} across {kpis['Purchase line count']} purchase line(s). No order ID detected; true order-level metrics are unavailable.",
+                source="summary.json:kpis",
+            ))
         if "Average order value" in kpis:
             findings.append(Finding(
                 description=f"Average order value is {kpis['Average order value']}.",
                 source="summary.json:kpis",
             ))
-        if "Return/cancel rate" in kpis:
+        elif "Average spend per row" in kpis:
             findings.append(Finding(
-                description=f"Return/cancel rate is {kpis['Return/cancel rate']}%.",
+                description=f"Average spend per purchase line is {kpis['Average spend per row']}. No order ID detected; average order value is unavailable.",
+                source="summary.json:kpis",
+            ))
+        return_rate = kpis.get("Return/cancel rate")
+        if return_rate is not None and return_rate != _UNAVAILABLE:
+            findings.append(Finding(
+                description=f"Return/cancel rate is {return_rate}%.",
                 source="summary.json:kpis",
             ))
         if "Discount rate" in kpis:
@@ -365,6 +413,8 @@ def _build_top_findings(
 
     for col, stats in numeric_summary.items():
         if _is_identifier_metric(col):
+            continue
+        if _is_date_column(col):
             continue
         min_value = stats.get("min")
         max_value = stats.get("max")
@@ -484,8 +534,15 @@ def _has_named_column(columns: list[str], tokens: list[str]) -> bool:
 def _is_identifier_metric(label: str) -> bool:
     text = label.lower()
     return text in {"id", "referencia", "reference"} or any(
-        token in text for token in (" id", "id ", "identifier", "referencia", "reference")
+        token in text for token in (" id", "id ", "identifier", "referencia", "reference", "asin", "isbn", "sku")
     )
+
+
+def _is_date_column(label: str) -> bool:
+    text = label.lower()
+    date_tokens = ("date", "fecha", "created_at", "updated_at", "ordered_at", "purchase_date",
+                   "transaction_date", "timestamp", "created", "ordered")
+    return any(token in text for token in date_tokens)
 
 
 def _percent_in_text(text: str) -> float:

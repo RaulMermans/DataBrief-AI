@@ -879,3 +879,56 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+/* Sample dataset buttons */
+.sampleButtons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.sampleLabel {
+  color: #647482;
+  font-size: 0.84rem;
+}
+
+.sampleLink {
+  background: #f0f7f6;
+  border: 1px solid #a9d1cb;
+  border-radius: 6px;
+  color: #214e4a;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  text-decoration: none;
+}
+
+.sampleLink:hover {
+  background: #e0efed;
+}
+
+/* Export links */
+.exportRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.exportLink {
+  background: #f4f8f7;
+  border: 1px solid #c4deda;
+  border-radius: 8px;
+  color: #214e4a;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 10px 16px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.exportLink:hover {
+  background: #e0efed;
+  border-color: #8cbfb9;
+}

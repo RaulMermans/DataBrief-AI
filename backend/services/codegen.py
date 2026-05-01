@@ -74,16 +74,22 @@ def generate_python_script(
     }
     sample_rows = profile.get("sample_rows", [])
     columns = list(inferred_types.keys())
+    date_role_columns = {
+        column for column, role in column_roles.items() if role == "date"
+    }
     numeric_columns = [
         column
         for column, inferred_type in inferred_types.items()
-        if inferred_type in {"integer", "number"} and column not in excluded_columns
+        if inferred_type in {"integer", "number"}
+        and column not in excluded_columns
+        and column not in date_role_columns
     ]
     for column, role in column_roles.items():
         values = [row.get(column, "") for row in sample_rows]
         if (
             column not in numeric_columns
             and column not in excluded_columns
+            and column not in date_role_columns
             and (role in BUSINESS_NUMERIC_ROLES or is_parseable_numeric_column(values))
         ):
             numeric_columns.append(column)
@@ -386,7 +392,7 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
     price_column = role_column("price") or pick_column(columns, ["unit_price", "item_price", "price"], numeric_columns)
     margin_column = role_column("margin") or pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
     discount_column = role_column("discount") or pick_column(columns, ["discount", "coupon"], numeric_columns)
-    order_column = role_column("identifier") or pick_column(columns, ["order_id", "order", "transaction"])
+    order_column = role_column("identifier") or pick_column(columns, ["order_id", "order_number", "transaction_id", "transaction"])
     customer_column = role_column("customer")
     new_customer_column = role_column("new_customer")
     category_column = role_column("category") or role_column("product") or pick_column(columns, ["category", "product_type", "department", "product"])
@@ -406,10 +412,15 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
             revenue_label = "Total estimated spend" if price_column and revenue_column == price_column else "Net revenue"
             net_revenue = round(sum(revenue_values), 2)
             kpis[revenue_label] = net_revenue
-            order_count = distinct_count(rows, order_column) if order_column else len(rows)
-            kpis["Order count"] = order_count
-            if order_count:
-                kpis["Average order value"] = round(net_revenue / order_count, 2)
+            if order_column:
+                order_count = distinct_count(rows, order_column)
+                kpis["Order count"] = order_count
+                if order_count:
+                    kpis["Average order value"] = round(net_revenue / order_count, 2)
+            else:
+                kpis["Purchase line count"] = len(rows)
+                if len(rows):
+                    kpis["Average spend per row"] = round(net_revenue / len(rows), 2)
         if margin_column:
             margin_values = numeric_values(rows, margin_column)
             if margin_values:
@@ -429,9 +440,12 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
                 denominator = sum(numeric_values(rows, gross_column)) if gross_column else discount_total + sum(numeric_values(rows, revenue_column) if revenue_column else [])
                 if denominator:
                     kpis["Discount rate"] = round((discount_total / denominator) * 100, 2)
-        rate = status_rate(rows, status_column, ["return", "returned", "refund", "refunded", "cancel", "cancelled", "canceled"])
-        if rate is not None:
-            kpis["Return/cancel rate"] = rate
+        if status_column:
+            rate = status_rate(rows, status_column, ["return", "returned", "refund", "refunded", "cancel", "cancelled", "canceled"])
+            if rate is not None:
+                kpis["Return/cancel rate"] = rate
+        else:
+            kpis["Return/cancel rate"] = "Unavailable"
         if category_column:
             kpis[f"Distinct {category_column}"] = distinct_count(rows, category_column)
         if channel_column:
@@ -674,6 +688,43 @@ def write_histogram_chart(path, rows, column):
     return 1
 
 
+def human_column_label(column):
+    """Return a readable label for a column name."""
+    label_map = {
+        "unit_price": "Average item price",
+        "item_price": "Average item price",
+        "price": "Average item price",
+        "net_revenue": "Estimated spend",
+        "revenue": "Estimated spend",
+        "total": "Estimated spend",
+        "amount": "Estimated spend",
+        "spend": "Estimated spend",
+        "gross_sales": "Gross sales",
+        "gross": "Gross sales",
+        "quantity": "Units",
+        "qty": "Units",
+        "units": "Units",
+        "margin": "Margin",
+        "profit": "Profit",
+        "discount": "Discount",
+    }
+    normalized = column.lower().replace(" ", "_")
+    return label_map.get(normalized, column.replace("_", " ").title())
+
+
+def chart_title(metric_column, category_column, is_time=False):
+    """Generate a semantically accurate chart title."""
+    metric_label = human_column_label(metric_column) if metric_column else None
+    category_label = category_column.replace("_", " ").title() if category_column else None
+    if metric_label and is_time:
+        return f"{metric_label} over time"
+    if metric_label and category_label:
+        return f"{metric_label} by {category_label}"
+    if category_label:
+        return f"Purchase lines by {category_label}"
+    return "Chart"
+
+
 def write_category_chart(path, rows, category_column, metric_column):
     grouped = defaultdict(float)
     counts = Counter()
@@ -683,11 +734,14 @@ def write_category_chart(path, rows, category_column, metric_column):
         if metric_column:
             grouped[label] += parse_float(row.get(metric_column, "")) or 0
     if metric_column:
-        values = sorted(grouped.items(), key=lambda item: item[1], reverse=True)[:10]
-        title = f"{metric_column} by {category_column}"
+        # Exclude "(missing)" product entries from top-product revenue charts
+        all_items = sorted(grouped.items(), key=lambda item: item[1], reverse=True)
+        values = [(k, v) for k, v in all_items if k != "(missing)"][:10]
+        title = chart_title(metric_column, category_column)
     else:
         values = sorted(counts.items(), key=lambda item: item[1], reverse=True)[:10]
-        title = f"Rows by {category_column}"
+        values = [(k, v) for k, v in values if k != "(missing)"]
+        title = chart_title(None, category_column)
     if not values:
         return 0
     write_bar_svg(path, title, values)
@@ -704,7 +758,7 @@ def write_time_chart(path, rows, date_column, metric_column):
     points = sorted(grouped.items())[:24]
     if len(points) < 2:
         return 0
-    write_line_svg(path, f"{metric_column} by {date_column}", points)
+    write_line_svg(path, chart_title(metric_column, date_column, is_time=True), points)
     return 1
 
 
