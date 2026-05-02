@@ -7,20 +7,27 @@ from services.normalization import is_parseable_numeric_column, normalize_column
 
 
 BUSINESS_NUMERIC_ROLES = {"revenue", "price", "quantity", "margin", "discount"}
-EXCLUDED_ROLES = {"identifier", "reference"}
+EXCLUDED_ROLES = {"order_id", "product_id", "customer_id", "response_id", "generic_identifier", "reference"}
 
 _ROLE_TOKENS: list[tuple[str, tuple[str, ...]]] = [
     ("new_customer", ("nuevo cliente", "new customer", "new_customer", "first time customer")),
-    ("identifier", ("id", "identifier", "uuid", "asin", "isbn", "response id", "responseid")),
-    ("reference", ("referencia", "reference", "ref", "sku", "codigo", "code", "product code")),
+    # Most-specific identifier types first; generic_identifier is the last-resort fallback.
+    ("order_id", ("order id", "order_id", "orderid", "order number", "order_number", "ordernumber", "transaction id", "transaction_id", "txn id", "txn_id")),
+    ("response_id", ("response id", "responseid", "survey response id", "survey_response_id")),
+    ("product_id", ("asin", "isbn", "product id", "product_id", "product code", "item id", "item_id")),
+    ("customer_id", ("customer id", "customer_id", "buyer id", "user id", "account id")),
+    ("generic_identifier", ("id", "identifier", "uuid")),
+    ("reference", ("referencia", "reference", "ref", "sku", "codigo", "code")),
     ("date", ("fecha", "date", "created", "ordered", "purchase date", "transaction date")),
     ("revenue", ("total", "importe", "amount", "revenue", "sales", "gross", "net", "spend")),
     ("price", ("precio", "price", "unit price", "item price")),
     ("quantity", ("cantidad", "quantity", "qty", "units", "unidades")),
     ("customer", ("cliente", "customer", "buyer", "account")),
     ("payment_method", ("pago", "payment", "payment method", "metodo pago", "forma pago")),
-    ("status", ("estado", "status", "state", "return", "refund", "cancel")),
-    ("geography", ("entrega", "delivery", "country", "region", "city", "state", "market", "pais", "ciudad")),
+    # "state" removed from status — it belongs to geography.
+    ("status", ("estado", "status", "return", "refund", "cancel", "cancellation")),
+    # Geography includes "state" and explicit shipping/address compound patterns.
+    ("geography", ("entrega", "delivery", "country", "region", "city", "state", "province", "market", "pais", "ciudad", "shipping address state", "shipping state", "address state")),
     ("category", ("categoria", "category", "department", "segment")),
     ("product", ("producto", "product", "item", "articulo", "name")),
     ("margin", ("margen", "margin", "profit")),
@@ -125,7 +132,7 @@ def _confidence(subtype: str, column_roles: dict[str, str]) -> float:
     signal_count = sum(1 for role in column_roles.values() if role != "unknown")
     base = round(min(0.85, 0.55 + signal_count * 0.06), 2)
     # Cap lower when business-critical fields are absent — interpretation is limited
-    has_order_id = any(role == "identifier" for role in roles)
+    has_order_id = "order_id" in roles
     has_status = "status" in roles
     if not has_order_id and not has_status:
         base = min(base, 0.78)
@@ -137,7 +144,7 @@ def _confidence(subtype: str, column_roles: dict[str, str]) -> float:
 def _usable_metrics(column_roles: dict[str, str]) -> list[str]:
     roles = set(column_roles.values())
     metrics: list[str] = []
-    has_order_id = "identifier" in roles
+    has_order_id = "order_id" in roles
     if "revenue" in roles:
         if has_order_id:
             metrics.extend(["revenue", "average_order_value"])
@@ -170,7 +177,7 @@ def _limitations(column_roles: dict[str, str]) -> list[str]:
         limitations.append("No revenue or price/quantity spend fields detected")
     if "customer" not in roles:
         limitations.append("No customer field detected")
-    if "identifier" not in roles and "reference" not in roles:
+    if "order_id" not in roles:
         limitations.append("No order ID detected; true order-level metrics are unavailable")
     if "status" not in roles:
         limitations.append("No return, refund, cancel, or status field detected; return/cancel rate is unavailable")

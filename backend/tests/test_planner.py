@@ -103,4 +103,4 @@ def test_generate_plan_includes_revenue_order_kpis_for_spanish_total() -> None:
 
     assert "Total revenue" in plan["likely_kpis"]
     assert "Average order value" in plan["likely_kpis"]
-    assert "Order count from ID" in plan["likely_kpis"]
+    assert "Order count" in plan["likely_kpis"]

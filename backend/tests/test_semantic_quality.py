@@ -483,23 +483,23 @@ def test_confidence_note_distinguishes_data_and_business(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_asin_classified_as_identifier():
+def test_asin_classified_as_product_id():
     semantic = build_semantic_profile({
         "inferred_types": {"ASIN": "string", "unit_price": "number"},
         "sample_rows": [{"ASIN": "B001234567", "unit_price": "29.99"}],
     }).to_dict()
 
-    assert semantic["column_roles"]["ASIN"] == "identifier"
+    assert semantic["column_roles"]["ASIN"] == "product_id"
     assert any(e["column"] == "ASIN" for e in semantic["excluded_columns"])
 
 
-def test_isbn_classified_as_identifier():
+def test_isbn_classified_as_product_id():
     semantic = build_semantic_profile({
         "inferred_types": {"ISBN": "string", "price": "number"},
         "sample_rows": [{"ISBN": "978-0-06-112008-4", "price": "14.99"}],
     }).to_dict()
 
-    assert semantic["column_roles"]["ISBN"] == "identifier"
+    assert semantic["column_roles"]["ISBN"] == "product_id"
 
 
 # ---------------------------------------------------------------------------
@@ -535,3 +535,109 @@ def test_limitations_include_no_return_rate_notice():
 
     limitations_text = " ".join(semantic["limitations"])
     assert "return" in limitations_text.lower() or "cancel" in limitations_text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Semantic correctness: geography vs status, identifier role splitting
+# ---------------------------------------------------------------------------
+
+
+def test_shipping_address_state_is_geography():
+    """'Shipping Address State' must be classified as geography, not status."""
+    semantic = build_semantic_profile({
+        "inferred_types": {"Shipping Address State": "string"},
+        "sample_rows": [{"Shipping Address State": "CA"}],
+    }).to_dict()
+
+    assert semantic["column_roles"]["Shipping Address State"] == "geography", (
+        "Shipping Address State must be geography, not status"
+    )
+
+
+def test_shipping_address_state_without_status_produces_no_return_rate():
+    """A dataset with Shipping Address State but no order-status field must report
+    return_cancel_rate as unavailable."""
+    semantic = build_semantic_profile({
+        "inferred_types": {
+            "Shipping Address State": "string",
+            "Price": "number",
+            "Quantity": "integer",
+        },
+        "sample_rows": [],
+    }).to_dict()
+
+    assert "return_cancel_rate" not in semantic["usable_metrics"], (
+        "return_cancel_rate must not be available when no status field exists"
+    )
+    limitations_text = " ".join(semantic["limitations"])
+    assert "return" in limitations_text.lower() or "cancel" in limitations_text.lower()
+
+
+def test_product_identifiers_are_not_order_id():
+    """ASIN, ISBN, and Product Code must map to product_id or reference, not order_id."""
+    for col_name in ("ASIN", "ISBN", "Product Code"):
+        semantic = build_semantic_profile({
+            "inferred_types": {col_name: "string"},
+            "sample_rows": [],
+        }).to_dict()
+
+        role = semantic["column_roles"][col_name]
+        assert role in ("product_id", "reference"), (
+            f"{col_name} must be product_id or reference, got {role!r}"
+        )
+        assert role != "order_id", f"{col_name} must not be classified as order_id"
+
+
+def test_survey_response_id_is_response_id():
+    """Survey ResponseID and Response ID must map to response_id, not order_id."""
+    for col_name in ("Response ID", "ResponseID", "Survey ResponseID"):
+        semantic = build_semantic_profile({
+            "inferred_types": {col_name: "string"},
+            "sample_rows": [],
+        }).to_dict()
+
+        role = semantic["column_roles"][col_name]
+        assert role == "response_id", f"{col_name} must be response_id, got {role!r}"
+        assert role != "order_id", f"{col_name} must not be classified as order_id"
+
+
+def test_amazon_schema_no_order_count_no_aov():
+    """Amazon-style schema with ASIN but no order ID must not produce
+    order_count or average_order_value in usable_metrics."""
+    semantic = build_semantic_profile({
+        "inferred_types": {
+            "ASIN": "string",
+            "Product Title": "string",
+            "Category": "string",
+            "Shipping Address State": "string",
+            "Order Date": "date",
+            "Price": "number",
+            "Quantity": "integer",
+        },
+        "sample_rows": [],
+    }).to_dict()
+
+    metrics = semantic["usable_metrics"]
+    assert "order_count" not in metrics, "Amazon schema must not produce order_count"
+    assert "average_order_value" not in metrics, "Amazon schema must not produce average_order_value"
+
+
+def test_amazon_schema_produces_purchase_line_count_and_estimated_spend():
+    """Amazon-style schema with ASIN but no order ID must produce
+    purchase_line_count and estimated_spend in usable_metrics."""
+    semantic = build_semantic_profile({
+        "inferred_types": {
+            "ASIN": "string",
+            "Product Title": "string",
+            "Category": "string",
+            "Shipping Address State": "string",
+            "Order Date": "date",
+            "Price": "number",
+            "Quantity": "integer",
+        },
+        "sample_rows": [],
+    }).to_dict()
+
+    metrics = semantic["usable_metrics"]
+    assert "purchase_line_count" in metrics, "Amazon schema must produce purchase_line_count"
+    assert "estimated_spend" in metrics, "Amazon schema must produce estimated_spend"
