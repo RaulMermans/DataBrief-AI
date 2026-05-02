@@ -32,7 +32,7 @@ def test_spanish_order_columns_infer_roles() -> None:
     semantic = build_semantic_profile(profile).to_dict()
 
     assert semantic["dataset_subtype"] == "transactional_orders"
-    assert semantic["column_roles"]["ID"] == "identifier"
+    assert semantic["column_roles"]["ID"] == "generic_identifier"
     assert semantic["column_roles"]["Referencia"] == "reference"
     assert semantic["column_roles"]["Cliente"] == "customer"
     assert semantic["column_roles"]["Fecha"] == "date"
@@ -41,7 +41,7 @@ def test_spanish_order_columns_infer_roles() -> None:
     assert semantic["column_roles"]["Estado"] == "status"
     assert semantic["column_roles"]["Entrega"] == "geography"
     assert semantic["column_roles"]["Nuevo cliente"] == "new_customer"
-    assert {"column": "ID", "reason": "identifier"} in semantic["excluded_columns"]
+    assert {"column": "ID", "reason": "generic_identifier"} in semantic["excluded_columns"]
     assert {"column": "Referencia", "reason": "reference"} in semantic["excluded_columns"]
 
 

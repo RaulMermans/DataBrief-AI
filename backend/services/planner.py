@@ -74,7 +74,7 @@ def _semantic_plan(
     category = _first_role(roles, ["category", "product"])
     price = _first_role(roles, ["price"])
     quantity = _first_role(roles, ["quantity"])
-    order = _first_role(roles, ["identifier"])
+    order = _first_role(roles, ["order_id"])
 
     if subtype == "purchase_history" or (dataset_type == "ecommerce" and price and quantity and not revenue):
         return AnalysisPlan(

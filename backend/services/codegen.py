@@ -392,7 +392,7 @@ def build_kpis(rows, columns, numeric_columns, category_columns, duplicate_rows,
     price_column = role_column("price") or pick_column(columns, ["unit_price", "item_price", "price"], numeric_columns)
     margin_column = role_column("margin") or pick_column(columns, ["gross_margin", "margin", "profit"], numeric_columns)
     discount_column = role_column("discount") or pick_column(columns, ["discount", "coupon"], numeric_columns)
-    order_column = role_column("identifier") or pick_column(columns, ["order_id", "order_number", "transaction_id", "transaction"])
+    order_column = role_column("order_id") or pick_column(columns, ["order_id", "order_number", "transaction_id", "transaction"])
     customer_column = role_column("customer")
     new_customer_column = role_column("new_customer")
     category_column = role_column("category") or role_column("product") or pick_column(columns, ["category", "product_type", "department", "product"])
@@ -507,7 +507,7 @@ def role_column(role):
 
 
 def first_business_numeric(numeric_columns):
-    excluded_roles = {"identifier", "reference"}
+    excluded_roles = EXCLUDED_ROLES
     for column in numeric_columns:
         if CONTEXT.get("column_roles", {}).get(column) not in excluded_roles:
             return column
