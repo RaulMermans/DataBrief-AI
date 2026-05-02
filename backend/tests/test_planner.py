@@ -1,4 +1,4 @@
-from services.planner import generate_analysis_plan
+from services.planner import generate_analysis_plan, _first_matching_order_id
 
 
 def test_generate_sales_plan_is_structured_and_grounded() -> None:
@@ -83,6 +83,68 @@ def test_generate_ecommerce_plan_includes_purchase_history_spend_kpis() -> None:
 
     assert "Total estimated spend" in plan["likely_kpis"]
     assert "Average item price from unit_price" in plan["likely_kpis"]
+
+
+def test_amazon_style_plan_no_order_count() -> None:
+    profile = {
+        "inferred_types": {
+            "Order Date": "date",
+            "ASIN": "string",
+            "Title": "string",
+            "Category": "string",
+            "Quantity": "integer",
+            "Purchase Price Per Unit": "number",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.85, "explanation": "purchase-history"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    kpis_text = " ".join(plan["likely_kpis"])
+    assert "Order count" not in kpis_text
+
+
+def test_amazon_style_plan_has_purchase_line_count() -> None:
+    profile = {
+        "inferred_types": {
+            "Order Date": "date",
+            "ASIN": "string",
+            "Title": "string",
+            "Category": "string",
+            "Quantity": "integer",
+            "Purchase Price Per Unit": "number",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.85, "explanation": "purchase-history"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert "Purchase line count" in plan["likely_kpis"]
+
+
+def test_order_date_not_selected_as_order_id() -> None:
+    assert _first_matching_order_id(["Order Date", "Product", "Revenue"]) is None
+
+
+def test_transaction_date_not_selected_as_order_id() -> None:
+    assert _first_matching_order_id(["Transaction Date", "Amount", "Customer"]) is None
+
+
+def test_real_order_id_enables_order_metrics() -> None:
+    profile = {
+        "inferred_types": {
+            "order_id": "string",
+            "order_date": "date",
+            "customer_id": "string",
+            "net_revenue": "number",
+            "status": "string",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.95, "explanation": "transactional"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert any("Order count from" in kpi for kpi in plan["likely_kpis"])
 
 
 def test_generate_plan_includes_revenue_order_kpis_for_spanish_total() -> None:

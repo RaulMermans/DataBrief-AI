@@ -1,11 +1,38 @@
+# OS
 .DS_Store
+
+# Environment files
 .env
-.next/
-.pytest_cache/
+.env.local
+.env.development
+.env.production
+
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+dist/
+build/
+coverage/
+.coverage
+htmlcov/
+
+# Node / Next.js
 node_modules/
+.next/
 tsconfig.tsbuildinfo
+
+# Analysis run artifacts (generated at runtime)
+runs/
+uploads/
+exports/generated/
+*.db
+*.sqlite
+
+# Images / media (never commit screenshots or personal files here)
 *.jpeg
 *.jpg
 *.png

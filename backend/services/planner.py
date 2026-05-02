@@ -83,7 +83,7 @@ def _semantic_plan(
                 "Total estimated spend",
                 "Total units",
                 f"Average item price from {price}" if price else "Average item price",
-                f"Order count from {order}" if order else "Order count",
+                f"Order count from {order}" if order else "Purchase line count",
                 f"Spend by {category}" if category else None,
                 f"Spend by {geography}" if geography else None,
             ]),
@@ -255,7 +255,7 @@ def _ecommerce_plan(
     revenue_column = _first_matching(columns, ["net_revenue", "revenue", "sales", "amount", "total"])
     gross_column = _first_matching(columns, ["gross_sales", "gross", "subtotal"])
     margin_column = _first_matching(columns, ["gross_margin", "margin", "profit"])
-    order_column = _first_matching(columns, ["order_id", "order", "transaction"])
+    order_column = _first_matching_order_id(columns)
     units_column = _first_matching(columns, ["units", "quantity", "qty"])
     price_column = _first_matching(columns, ["unit_price", "item_price", "price"])
     discount_column = _first_matching(columns, ["discount", "coupon"])
@@ -270,7 +270,7 @@ def _ecommerce_plan(
             f"Gross sales from {gross_column}" if gross_column else "Gross sales",
             f"Net revenue from {revenue_column}" if revenue_column else "Net revenue",
             f"Gross margin from {margin_column}" if margin_column else "Gross margin",
-            f"Order count from {order_column}" if order_column else "Order count",
+            f"Order count from {order_column}" if order_column else None,
             f"Units sold from {units_column}" if units_column else "Units sold",
             "Average order value",
             "Total estimated spend" if units_column and price_column and not revenue_column else None,
@@ -468,3 +468,17 @@ def _first_matching(columns: list[str], tokens: list[str]) -> str | None:
 
 def _dedupe(items: list[str | None]) -> list[str]:
     return list(dict.fromkeys(item for item in items if item))
+
+
+_ORDER_ID_NAMES: frozenset[str] = frozenset({
+    "order_id", "orderid", "order_number", "order_no", "order_num",
+    "transaction_id", "txn_id",
+})
+
+
+def _first_matching_order_id(columns: list[str]) -> str | None:
+    for column in columns:
+        normalized = column.lower().replace(" ", "_").replace("-", "_")
+        if normalized in _ORDER_ID_NAMES:
+            return column
+    return None

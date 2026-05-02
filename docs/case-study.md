@@ -63,14 +63,29 @@ This project intentionally uses a bounded workflow instead of a fully autonomous
 - Users need to understand and trust each output claim
 - Agent architectures add complexity without clear benefit for this well-structured task
 
+## Safety Model
+
+The sandbox is layered, not OS-isolated:
+
+1. **Static import check** — Generated Python is parsed with the `ast` module before execution. Any import not on the allowlist (pandas, numpy, matplotlib, seaborn, standard library) is rejected before a subprocess is started.
+2. **Subprocess resource limits** — Execution runs in a subprocess with a wall-clock timeout; memory and CPU are bounded by the host process limit.
+3. **File scope** — Scripts write only to the current run directory; no other filesystem paths are accessible by convention.
+4. **No network in the allowlist** — `requests`, `urllib`, `socket`, `httpx`, and similar libraries are blocked by the import check.
+
+**What is not implemented:** OS-level network namespace isolation, filesystem mount restrictions, seccomp filtering, or container-level process isolation. The static import check is a best-effort gate, not a security boundary. Production deployment would require container isolation or a purpose-built sandboxing layer.
+
 ## Current Limitations
 
-- **No order-level metrics without an order ID** — True order count and average order value require an order ID column; without one, the workflow uses "purchase line count" and flags the limitation explicitly
-- **Return/cancel rate requires a status field** — Without a return, refund, cancel, or status column, the metric is labeled "Unavailable"
-- **Sandbox is statically gated, not OS-isolated** — Import policy is enforced via AST analysis; OS-level network isolation is not implemented
-- **Single-run, no memory** — Each upload is independent; there is no cross-run analysis or session persistence
-- **File size cap** — Demo deployment caps uploads at 5 MB; large files require local deployment
-- **No streaming** — Results appear only after the full pipeline completes
+- **Portfolio prototype, not production SaaS** — Focused feature set; not hardened for arbitrary untrusted input at scale.
+- **No order-level metrics without an order ID** — True order count and average order value require an order ID column; without one, the workflow uses "purchase line count" and flags the limitation explicitly.
+- **Return/cancel rate requires a status field** — Without a return, refund, cancel, or status column, the metric is labeled "Unavailable."
+- **Sandbox is statically gated, not OS-isolated** — Import policy is enforced via AST analysis; OS-level network isolation is not implemented.
+- **Analysis quality depends on detectable column roles** — Ambiguous or non-standard column names degrade routing and plan quality.
+- **No full autonomous agentic reasoning** — The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
+- **Single-run, no memory** — Each upload is independent; there is no cross-run analysis or session persistence.
+- **File size cap** — Demo deployment caps uploads at 5 MB; large files require local deployment.
+- **No streaming** — Results appear only after the full pipeline completes.
+- **Sample datasets are synthetic demos** — The bundled examples contain fabricated data; results are illustrative only.
 
 ## Future Improvements
 
