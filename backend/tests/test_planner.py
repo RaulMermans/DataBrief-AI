@@ -147,6 +147,72 @@ def test_real_order_id_enables_order_metrics() -> None:
     assert any("Order count from" in kpi for kpi in plan["likely_kpis"])
 
 
+def test_ecommerce_no_avg_order_value_without_order_id() -> None:
+    profile = {
+        "inferred_types": {
+            "Order Date": "date",
+            "Revenue": "number",
+            "Category": "string",
+            "Channel": "string",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "test"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert not any("Average order value" in item for item in plan["likely_kpis"])
+
+
+def test_ecommerce_no_return_cancel_rate_without_status() -> None:
+    profile = {
+        "inferred_types": {
+            "Order Date": "date",
+            "Revenue": "number",
+            "Category": "string",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "test"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    assert not any("Return/cancel rate" in item for item in plan["likely_kpis"])
+
+
+def test_ecommerce_spaced_order_id_enables_order_metrics() -> None:
+    profile = {
+        "inferred_types": {
+            "Order ID": "string",
+            "Order Date": "date",
+            "Revenue": "number",
+            "Quantity": "integer",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "test"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    kpis = plan["likely_kpis"]
+    assert "Order count from Order ID" in kpis
+    assert "Average order value" in kpis
+
+
+def test_ecommerce_transaction_id_enables_order_metrics() -> None:
+    profile = {
+        "inferred_types": {
+            "Transaction ID": "string",
+            "Transaction Date": "date",
+            "Revenue": "number",
+        }
+    }
+    route = {"dataset_type": "ecommerce", "confidence": 0.9, "explanation": "test"}
+
+    plan = generate_analysis_plan(profile, route).to_dict()
+
+    kpis = plan["likely_kpis"]
+    assert "Order count from Transaction ID" in kpis
+    assert "Average order value" in kpis
+
+
 def test_generate_plan_includes_revenue_order_kpis_for_spanish_total() -> None:
     profile = {
         "inferred_types": {

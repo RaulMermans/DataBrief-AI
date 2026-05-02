@@ -195,7 +195,7 @@ def _sales_plan(
     likely_kpis = _dedupe(
         [
             f"Total {revenue_column}" if revenue_column else "Total revenue",
-            f"Average {revenue_column}" if revenue_column else "Average order value",
+            f"Average {revenue_column}" if revenue_column else "Average revenue per row",
             f"Total {units_column}" if units_column else "Total units sold",
             f"Unique {customer_column}" if customer_column else "Unique customers",
             f"Top {product_column}" if product_column else "Top products",
@@ -272,10 +272,10 @@ def _ecommerce_plan(
             f"Gross margin from {margin_column}" if margin_column else "Gross margin",
             f"Order count from {order_column}" if order_column else None,
             f"Units sold from {units_column}" if units_column else "Units sold",
-            "Average order value",
+            "Average order value" if order_column else "Average spend per row",
             "Total estimated spend" if units_column and price_column and not revenue_column else None,
             f"Average item price from {price_column}" if price_column else None,
-            f"Return/cancel rate from {status_column}" if status_column else "Return/cancel rate",
+            f"Return/cancel rate from {status_column}" if status_column else None,
             f"Discount rate from {discount_column}" if discount_column else "Discount rate",
             f"Top categories by {category_column}" if category_column else "Top categories",
             f"Channel performance by {channel_column}" if channel_column else "Acquisition channel performance",
