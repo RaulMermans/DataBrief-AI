@@ -37,3 +37,6 @@ exports/generated/
 *.jpg
 *.png
 *.gif
+
+# Allow portfolio screenshots in docs/screenshots/
+!docs/screenshots/*.png

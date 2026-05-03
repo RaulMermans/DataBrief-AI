@@ -1,31 +1,78 @@
 # DataBrief AI
 
-**DataBrief AI** is a bounded AI analytics workflow for CSV/XLSX files. It uses deterministic profiling, semantic role detection, controlled Python execution, bounded repair, and grounded report generation.
+Bounded AI analytics workflow for CSV/XLSX business reports.
 
-> **Portfolio prototype.** This project is a technical case study demonstrating bounded AI workflow design — not a production SaaS, not a fully autonomous agent, and not an enterprise-ready analytics platform. See [Current Limitations](#current-limitations).
+DataBrief AI turns spreadsheet uploads into structured business reports through deterministic profiling, semantic role detection, controlled Python execution, bounded repair, and grounded report generation.
+
+[Live Demo](https://data-brief-ai-sigma.vercel.app) · [Case Study](docs/case-study.md)
+
+> **Portfolio prototype.** This project demonstrates a bounded AI workflow architecture. It is not production SaaS. Generated code is statically checked and executed with resource limits; production use would require OS-level isolation.
+
+## Preview
+
+Portfolio screenshots are stored in `docs/screenshots/` after a demo run.
 
 ## What it does
 
-Upload → Validate → Profile → Route → Plan → Execute → Evaluate → Repair → Report → Export
+- Upload CSV or XLSX files
+- Detect dataset structure and semantic column roles
+- Generate a safe, deterministic analysis plan
+- Execute controlled Python analysis
+- Validate outputs and repair common failures
+- Generate grounded business reports
+- Export report (Markdown), findings (JSON), and analysis script (Python)
 
-1. **Upload & validate** — CSV or XLSX accepted; malformed files fail fast with clear errors.
-2. **Profile** — Structural stats (row count, column types, missing values, duplicates) and semantic column roles (identifier, date, revenue, quantity, …).
-3. **Route** — Dataset classified as sales, ecommerce, finance, or generic based on column roles.
-4. **Plan** — Deterministic analysis plan: KPI targets, business questions, recommended charts.
-5. **Execute** — Template-generated Python runs in a bounded sandbox; only allowed stdlib and pandas/numpy/matplotlib/seaborn imports are permitted.
-6. **Evaluate & repair** — Up to 2 bounded repair attempts on failure; unrecoverable errors surface clearly.
-7. **Report** — Structured report built from computed outputs only: no claims are invented.
-8. **Export** — Download the report (Markdown), findings (JSON), and the generated analysis script (Python).
+## Architecture
 
-## Positioning
+```mermaid
+flowchart LR
+  A[Upload CSV/XLSX] --> B[Validate]
+  B --> C[Profile]
+  C --> D[Route]
+  D --> E[Plan]
+  E --> F[Controlled Python Execution]
+  F --> G[Evaluate + Repair]
+  G --> H[Grounded Report]
+  H --> I[Export]
+```
 
-This project uses a **bounded workflow**, not a fully autonomous AI agent. Spreadsheet analysis benefits from predictable orchestration, deterministic validation, and clear safety limits. Open-ended agents can generate hallucinated KPIs, make unverifiable claims, or produce unsafe code — none of which belong in analytics.
+## Why a bounded workflow?
 
-## Screenshots
+DataBrief AI intentionally uses a bounded workflow instead of a fully autonomous agent. Spreadsheet analysis benefits from predictable orchestration, deterministic validation, explicit safety limits, and reproducible outputs.
 
-> Screenshots from the demo deployment using `examples/sample_ecommerce.csv`.
+The workflow uses agentic patterns — routing, evaluation, bounded repair, and grounded report generation — without allowing arbitrary tool use, web browsing, or open-ended code execution.
 
-See [docs/screenshots/](docs/screenshots/) for portfolio-ready screenshots of the upload screen, semantic profile, report, and export buttons.
+**Why workflow:**
+- Spreadsheet analysis has a predictable, repeatable structure
+- Deterministic profiling and routing eliminate ambiguity before code generation
+- Bounded execution with an allowlist prevents unexpected behavior
+- Groundedness checks ensure no unsupported claims reach the report
+
+**Why not autonomous agent:**
+- Open-ended agents can generate hallucinated KPIs from thin evidence
+- Autonomous tool use in a financial context requires stricter accountability
+- Users need to understand and trust each output claim
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16, React 18, TypeScript |
+| Backend | FastAPI, Python 3 |
+| Analysis | pandas, numpy, matplotlib, seaborn |
+| Storage | SQLite (run metadata), local filesystem (artifacts) |
+| Deploy | Docker-local · Vercel (demo) |
+
+## Project structure
+
+| Path | Purpose |
+|---|---|
+| `app/` | Next.js frontend |
+| `backend/` | FastAPI API and analysis workflow |
+| `backend/services/` | Profiling, planning, code generation, execution, evaluation, reporting |
+| `backend/tests/` | Backend tests and semantic quality checks |
+| `examples/` | Synthetic demo datasets |
+| `docs/` | Case study, screenshots, and architecture notes |
 
 ## Run locally
 
@@ -34,7 +81,7 @@ See [docs/screenshots/](docs/screenshots/) for portfolio-ready screenshots of th
 npm install
 python3 -m pip install -r backend/requirements.txt
 
-# Optional: install openpyxl for XLSX support
+# Optional: XLSX support
 python3 -m pip install openpyxl
 ```
 
@@ -42,15 +89,26 @@ python3 -m pip install openpyxl
 # Start frontend
 npm run dev
 
-# Start backend (from the backend/ directory)
+# Start backend
 cd backend && uvicorn main:app --reload
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000`. Copy `.env.example` to `.env` — defaults work for local dev.
 
-Copy `.env.example` to `.env` and adjust if needed (defaults work for local dev).
+## Sample datasets
 
-## Verify
+Download from `examples/` and upload to exercise the workflow:
+
+- `sample_ecommerce.csv` — 30 purchase lines across footwear, sports, and apparel with date, category, quantity, and unit price
+- `sample_performance.csv` — 25 sales rep records with territory, product line, revenue, quota, and new-customer flag
+- `sample_campaigns.csv` — 26 campaign rows across paid search, social, display, and email with impressions, clicks, conversions, and spend
+- `sample_sales.csv` — Simple 4-row sales CSV for quick smoke tests
+- `sample_inventory.csv` — Inventory dataset
+- `sample_support.csv` — Support ticket dataset
+
+All datasets are synthetic. No real customer or company data.
+
+## Testing
 
 ```bash
 # Linting and type checks
@@ -60,14 +118,14 @@ npm run typecheck
 # Full test suite
 pytest -q
 
-# Semantic quality and planner tests specifically
+# Semantic quality and planner tests
 pytest backend/tests/test_semantic_quality.py backend/tests/test_semantic_profile.py backend/tests/test_planner.py -q
 
 # Python syntax check
 python3 -m compileall backend
 ```
 
-> **Note:** XLSX tests require `openpyxl`. If it is not installed, those tests are skipped with a clear message.
+> XLSX tests require `openpyxl`. If not installed, those tests are skipped with a clear message.
 
 ## API
 
@@ -77,45 +135,25 @@ python3 -m compileall backend
 - `GET /api/runs/{run_id}/export/findings.json`
 - `GET /api/runs/{run_id}/export/analysis.py`
 
-The upload endpoint returns `run_id`, `profile`, `route`, `plan`, `codegen`, `execution`, `retry`, and `report`. Failures return JSON with `detail` and `error.code`.
-
-## Demo datasets
-
-Download from `examples/` and upload to exercise the workflow:
-
-- `sample_ecommerce.csv` — 30 purchase lines across footwear, sports, and apparel categories with date, category, quantity, and unit price.
-- `sample_performance.csv` — 25 sales rep records with territory, product line, revenue, quota, and new-customer flag.
-- `sample_campaigns.csv` — 26 campaign rows across paid search, social, display, and email with impressions, clicks, conversions, and spend.
-- `sample_sales.csv` — Simple 4-row sales CSV for quick smoke tests.
-- `sample_inventory.csv` — Inventory dataset.
-- `sample_support.csv` — Support ticket dataset.
-
-All datasets are synthetic. No real customer or company data.
-
 ## Current limitations
 
-- **Portfolio prototype, not production SaaS.** This is a technical demo with a focused feature set.
-- **No OS-level sandbox isolation.** See sandbox note below.
+- **Portfolio prototype, not production SaaS.** Focused feature set; not hardened for arbitrary untrusted input at scale.
+- **No OS-level sandbox isolation.** Generated code is statically checked and executed with resource limits, but OS-level network/filesystem isolation is not implemented. Production use would require container isolation, network namespace restrictions, and stronger process sandboxing.
 - **No order-level metrics without an order ID.** True order count and average order value require an order ID column; without one, the workflow uses "purchase line count" and flags the limitation.
 - **Return/cancel rate requires a status field.** Without a return, refund, cancel, or status column, the metric is labeled "Unavailable."
 - **Analysis quality depends on detectable column roles.** Ambiguous or non-standard column names degrade routing and plan quality.
-- **No full autonomous agentic reasoning.** The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
-- **Single-run, no memory.** Each upload is independent; there is no cross-run analysis or session persistence.
+- **No autonomous agentic reasoning.** The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
+- **Single-run, no memory.** Each upload is independent; no cross-run analysis or session persistence.
 - **File size cap.** Demo deployment caps uploads at 5 MB; large files require local deployment.
-
-## Sandbox note
-
-Generated code is statically checked and executed with resource limits. Network-capable imports and suspicious patterns are rejected, but OS-level network/filesystem isolation is not implemented. Production use would require container isolation, network namespace restrictions, filesystem mount controls, and stronger process sandboxing.
 
 ## Future improvements
 
 - True OS-level sandbox isolation (Docker or seccomp)
 - Streaming workflow status to the frontend
 - Persistent run history for multi-upload comparison
-- User-configurable analysis focus (e.g., "focus on geographic breakdown")
+- User-configurable analysis focus
 - Support for multi-sheet XLSX files
 - Richer evaluation fixture suite
-- More domain-specific analysis recipes
 
 ## Deploy to Vercel
 
@@ -129,8 +167,8 @@ This repo uses Vercel Services to deploy the Next.js frontend and FastAPI backen
    - `DATABRIEF_CORS_ORIGINS` → `https://<your-domain>.vercel.app`
 3. Deploy.
 
-> **Note:** Vercel's serverless runtime has request-size, memory, timeout, and ephemeral-filesystem limits. Artifact files and the SQLite run store are not persisted across invocations. Suitable for live demos, not long-term artifact storage.
+> Vercel's serverless runtime has request-size, memory, timeout, and ephemeral-filesystem limits. Artifact files and the SQLite run store are not persisted across invocations. Suitable for live demos, not long-term artifact storage.
 
-## Architecture
+## Architecture notes
 
 See [docs/architecture.md](docs/architecture.md) and [docs/case-study.md](docs/case-study.md) for detailed design notes.
