@@ -13,7 +13,7 @@ DataBrief AI is a bounded AI analytics workflow that transforms CSV/XLSX files i
 1. Deterministic dataset profiling
 2. Domain routing (sales, ecommerce, finance, generic)
 3. Template-based Python code generation
-4. Bounded sandbox execution
+4. Controlled Python execution
 5. Evaluation and controlled repair loops
 6. Grounded report generation from computed outputs only
 
@@ -31,7 +31,7 @@ Upload → Validate → Profile → Route → Plan → Execute → Evaluate → 
 | Profile | Detects column types, missing values, duplicates, and semantic roles |
 | Route | Classifies dataset as sales, ecommerce, finance, or generic |
 | Plan | Generates a deterministic analysis plan: KPIs, questions, charts |
-| Execute | Runs template-generated Python in a bounded, allowlisted sandbox |
+| Execute | Runs template-generated Python with static checks and resource limits |
 | Evaluate | Assesses whether execution succeeded or needs repair |
 | Repair | Up to 2 bounded attempts to fix recoverable failures |
 | Report | Builds structured report from computed outputs only |
@@ -48,7 +48,7 @@ Upload → Validate → Profile → Route → Plan → Execute → Evaluate → 
 
 ## Workflow vs Agent Decision
 
-This project intentionally uses a bounded workflow instead of a fully autonomous agent. The reasons:
+This project intentionally uses a bounded AI analytics workflow instead of open-ended automation. The reasons:
 
 **Why workflow:**
 - Spreadsheet analysis has a predictable, repeatable structure
@@ -57,11 +57,11 @@ This project intentionally uses a bounded workflow instead of a fully autonomous
 - Groundedness checks ensure no unsupported claims reach the report
 - Retry limits and partial-result surfacing make failures understandable
 
-**Why not autonomous agent:**
-- Open-ended agents can generate hallucinated KPIs from thin evidence
-- Autonomous tool use in a financial context requires stricter accountability
+**Why not open-ended automation:**
+- Open-ended analysis loops can generate hallucinated KPIs from thin evidence
+- Arbitrary tool use in a financial context requires stricter accountability
 - Users need to understand and trust each output claim
-- Agent architectures add complexity without clear benefit for this well-structured task
+- Open-ended architectures add complexity without clear benefit for this well-structured task
 
 ## Safety Model
 
@@ -81,7 +81,7 @@ The sandbox is layered, not OS-isolated:
 - **Return/cancel rate requires a status field** — Without a return, refund, cancel, or status column, the metric is labeled "Unavailable."
 - **Sandbox is statically gated, not OS-isolated** — Import policy is enforced via AST analysis; OS-level network isolation is not implemented.
 - **Analysis quality depends on detectable column roles** — Ambiguous or non-standard column names degrade routing and plan quality.
-- **No full autonomous agentic reasoning** — The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
+- **No open-ended reasoning loop** — The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
 - **Single-run, no memory** — Each upload is independent; there is no cross-run analysis or session persistence.
 - **File size cap** — Demo deployment caps uploads at 5 MB; large files require local deployment.
 - **No streaming** — Results appear only after the full pipeline completes.

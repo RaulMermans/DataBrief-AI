@@ -6,7 +6,7 @@ DataBrief AI turns spreadsheet uploads into structured business reports through 
 
 [Live Demo](https://data-brief-ai-sigma.vercel.app) · [Case Study](docs/case-study.md)
 
-> **Portfolio prototype.** This project demonstrates a bounded AI workflow architecture. It is not production SaaS. Generated code is statically checked and executed with resource limits; production use would require OS-level isolation.
+> Portfolio prototype: this project demonstrates a bounded AI workflow architecture. It is not production SaaS. Generated code is statically checked and executed with resource limits; production use would require OS-level isolation.
 
 ## Preview
 
@@ -38,9 +38,9 @@ flowchart LR
 
 ## Why a bounded workflow?
 
-DataBrief AI intentionally uses a bounded workflow instead of a fully autonomous agent. Spreadsheet analysis benefits from predictable orchestration, deterministic validation, explicit safety limits, and reproducible outputs.
+DataBrief AI intentionally uses a bounded AI analytics workflow instead of open-ended automation. Spreadsheet analysis benefits from predictable orchestration, deterministic validation, explicit safety limits, and reproducible outputs.
 
-The workflow uses agentic patterns — routing, evaluation, bounded repair, and grounded report generation — without allowing arbitrary tool use, web browsing, or open-ended code execution.
+The workflow uses bounded steps — routing, evaluation, controlled Python execution, bounded repair, and grounded report generation — without allowing arbitrary tool use, web browsing, or open-ended code execution.
 
 **Why workflow:**
 - Spreadsheet analysis has a predictable, repeatable structure
@@ -48,9 +48,9 @@ The workflow uses agentic patterns — routing, evaluation, bounded repair, and 
 - Bounded execution with an allowlist prevents unexpected behavior
 - Groundedness checks ensure no unsupported claims reach the report
 
-**Why not autonomous agent:**
-- Open-ended agents can generate hallucinated KPIs from thin evidence
-- Autonomous tool use in a financial context requires stricter accountability
+**Why not open-ended automation:**
+- Open-ended analysis loops can generate hallucinated KPIs from thin evidence
+- Arbitrary tool use in a financial context requires stricter accountability
 - Users need to understand and trust each output claim
 
 ## Tech stack
@@ -108,6 +108,13 @@ Download from `examples/` and upload to exercise the workflow:
 
 All datasets are synthetic. No real customer or company data.
 
+## Demo flow
+
+1. Start the frontend and backend locally, or open the live demo.
+2. Upload `examples/sample_ecommerce.csv`.
+3. Review the report metrics, findings, charts, recommendations, and limitations.
+4. Download the Markdown report, JSON findings, or generated Python analysis script.
+
 ## Testing
 
 ```bash
@@ -142,7 +149,7 @@ python3 -m compileall backend
 - **No order-level metrics without an order ID.** True order count and average order value require an order ID column; without one, the workflow uses "purchase line count" and flags the limitation.
 - **Return/cancel rate requires a status field.** Without a return, refund, cancel, or status column, the metric is labeled "Unavailable."
 - **Analysis quality depends on detectable column roles.** Ambiguous or non-standard column names degrade routing and plan quality.
-- **No autonomous agentic reasoning.** The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
+- **No open-ended reasoning loop.** The pipeline is deterministic and orchestrated; it does not reason freely across unknown schemas.
 - **Single-run, no memory.** Each upload is independent; no cross-run analysis or session persistence.
 - **File size cap.** Demo deployment caps uploads at 5 MB; large files require local deployment.
 

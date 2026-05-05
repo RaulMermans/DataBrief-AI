@@ -138,3 +138,32 @@ def test_purchase_history_spend_executes_as_price_times_quantity(tmp_path: Path)
 
     assert result.status == "success"
     assert summary["kpis"]["Total estimated spend"] == 80
+
+
+def test_generic_numeric_dataset_executes_without_service_constants(tmp_path: Path) -> None:
+    input_path = tmp_path / "cities.csv"
+    input_path.write_text(
+        "city,population,region\n"
+        "Madrid,3223000,EMEA\n",
+        encoding="utf-8",
+    )
+    run_id, run_dir, artifact_dir = create_run_directory()
+    generated = generate_python_script(
+        profile={
+            "inferred_types": {
+                "city": "string",
+                "population": "integer",
+                "region": "string",
+            }
+        },
+        route={"dataset_type": "generic", "confidence": 0.6, "explanation": "test"},
+        plan={"likely_kpis": ["Average population"], "recommended_charts": []},
+        input_file_path=input_path,
+        artifact_dir=artifact_dir,
+    )
+
+    result = execute_generated_code(generated.code, run_id, run_dir, artifact_dir)
+    summary = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert result.status == "success"
+    assert summary["kpis"]["Average population"] == 3223000

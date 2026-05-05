@@ -16,11 +16,11 @@ Portfolio-ready release of DataBrief AI: a bounded AI analytics workflow for CSV
 
 ## Positioning
 
-This is a portfolio prototype and technical case study, not production SaaS. It intentionally uses a bounded workflow instead of a fully autonomous agent for reliability, reproducibility, and safety.
+This is a portfolio prototype and technical case study, not production SaaS. It intentionally uses a bounded AI analytics workflow instead of open-ended automation for reliability, reproducibility, and safety.
 
 ## Known limitations
 
 - No OS-level sandbox isolation
 - Analysis quality depends on detectable column roles
 - No web browsing or external enrichment
-- No fully autonomous agentic reasoning layer
+- No open-ended reasoning loop

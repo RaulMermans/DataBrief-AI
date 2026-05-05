@@ -39,7 +39,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - demoable in under 2 minutes
 
 ## Current active phase
-**PHASE_6_EXPORTS_AND_POLISH** (backend exports done; frontend wiring pending)
+**PHASE_6_EXPORTS_AND_POLISH** (complete; Phase 7 pending)
 
 ## Phase index
 - `PHASE_1_FOUNDATION`
@@ -221,7 +221,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 ---
 
 # PHASE_6_EXPORTS_AND_POLISH
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 ## Scope
 - report export
@@ -244,9 +244,9 @@ Stay a **bounded workflow**, not an open-ended agent.
 - [x] JSON export (GET /api/runs/{run_id}/export/findings.json)
 - [x] Python export (GET /api/runs/{run_id}/export/analysis.py)
 - [x] visual polish (sample rows and report priority improved)
-- [ ] progress UI (run_id returned; frontend polling not yet wired)
+- [x] progress UI (frontend workflow-progress indicator during synchronous upload)
 - [x] improved errors
-- [ ] demo flow
+- [x] demo flow (README demo flow, sample links, upload/export checks)
 
 ## Progress log
 - 2026-04-26: Implemented P0–P1 hardening: removed absolute paths from API responses, added TTL cleanup, strengthened sandbox AST checks (eval/exec/os.system/absolute paths), added summary.json schema validation, replaced replay-only retry with bounded repair runner (classifies failure type, modifies codegen context, max 2 repairs), replaced token-overlap groundedness with claim/evidence model (GroundedClaim with source/status/reason), added SQLite run metadata store (RunStore), added export endpoints (report.md, findings.json, analysis.py), added run status endpoint. 124 tests passing.
@@ -254,6 +254,7 @@ Stay a **bounded workflow**, not an open-ended agent.
 - 2026-04-28: Polished Phase 6 failure and report quality paths: structured API errors, safer frontend upload parsing, deterministic ecommerce/finance routing, ecommerce-specific plans/KPIs/charts, business-first report ordering, grounded conditional recommendations, and readable sample-row tables.
 - 2026-04-30: Completed Sprint B analytical-quality upgrade: strengthened deterministic ecommerce/purchase-history routing, added route-aware KPI priority and spend calculation, improved findings/recommendations/chart selection, and exposed dataset limitations/confidence framing. Backend tests: 136 passing.
 - 2026-04-30: Completed Phase C Sprint 1 report presentation polish: moved dataset/status framing into the report, separated primary/structural/warning KPI groups, improved findings/recommendation/quality section hierarchy, placed charts before limitations, and added graceful chart preview fallback.
+- 2026-05-05: Completed Phase 6 public polish: tightened README/case-study positioning, added demo flow, improved report evidence/source display, added upload progress UI and export cards, fixed generic numeric codegen execution, and verified frontend build plus focused upload/export/codegen tests.
 
 ---
 

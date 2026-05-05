@@ -2,8 +2,8 @@
 
 ## Overview
 
-DataBrief AI is a **bounded workflow**, not a general autonomous agent.  Every
-step is deterministic, explicitly sequenced, and capped with strict stop
+DataBrief AI is a **bounded AI analytics workflow**, not an open-ended analysis
+system.  Every step is deterministic, explicitly sequenced, and capped with strict stop
 conditions.  There are no unbounded loops, no open-ended model prompts, and no
 external network access in the analysis path.
 

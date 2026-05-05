@@ -215,7 +215,7 @@ export default function Home() {
           CSV/XLSX only. Demo uploads are capped by the backend configuration.
         </p>
         <div className="sampleButtons">
-          <span className="sampleLabel">Try a demo dataset:</span>
+          <span className="sampleLabel">Demo datasets:</span>
           <a className="sampleLink" href="/examples/sample_ecommerce.csv" download>
             Ecommerce purchases
           </a>
@@ -227,6 +227,7 @@ export default function Home() {
           </a>
         </div>
 
+        {isUploading ? <WorkflowProgress /> : null}
         {error ? <div className="error">{error}</div> : null}
       </section>
 
@@ -480,6 +481,10 @@ function humanizeLabel(label: string) {
   return label.replace(/_/g, " ");
 }
 
+function humanizeSource(source: string) {
+  return source.replace(/:/g, " / ");
+}
+
 function splitKpiCards(cards: KpiCard[]) {
   return cards.reduce(
     (groups, card) => {
@@ -558,6 +563,14 @@ function FinalReport({
           <strong>{report.is_partial ? "Partial report" : "Complete report"}</strong>
           {report.evaluator_note ? <p>{report.evaluator_note}</p> : null}
         </div>
+        <div>
+          <span>Grounding</span>
+          <strong>{report.revised ? "Revised after check" : "Supported claims"}</strong>
+          <p>
+            KPIs and findings are displayed with computed sources from the run
+            profile or summary artifact.
+          </p>
+        </div>
       </div>
 
       {/* Groundedness revision notice */}
@@ -612,7 +625,10 @@ function FinalReport({
             {report.top_findings.map((f, i) => (
               <li key={i}>
                 <span>{i + 1}</span>
-                <p>{f.description}</p>
+                <div>
+                  <p>{f.description}</p>
+                  <small>Source: {humanizeSource(f.source)}</small>
+                </div>
               </li>
             ))}
           </ol>
@@ -667,28 +683,25 @@ function FinalReport({
       {/* Exports */}
       <div className="reportSection">
         <h3>Exports</h3>
-        <div className="exportRow">
-          <a
-            className="exportLink"
+        <div className="exportGrid">
+          <ExportLink
             href={`${apiBase}/api/runs/${runId}/export/report.md`}
-            download="report.md"
-          >
-            Download report
-          </a>
-          <a
-            className="exportLink"
+            filename="report.md"
+            title="Report"
+            detail="Markdown summary"
+          />
+          <ExportLink
             href={`${apiBase}/api/runs/${runId}/export/findings.json`}
-            download="findings.json"
-          >
-            Download findings
-          </a>
-          <a
-            className="exportLink"
+            filename="findings.json"
+            title="Findings"
+            detail="Grounded JSON payload"
+          />
+          <ExportLink
             href={`${apiBase}/api/runs/${runId}/export/analysis.py`}
-            download="analysis.py"
-          >
-            Download analysis script
-          </a>
+            filename="analysis.py"
+            title="Analysis script"
+            detail="Generated Python"
+          />
         </div>
       </div>
     </section>
@@ -708,9 +721,54 @@ function KpiGroup({
         <div className={`kpiCard kpiCard-${variant}`} key={card.label}>
           <span className="kpiLabel">{humanizeLabel(card.label)}</span>
           <strong className="kpiValue">{formatKpiValue(card.value)}</strong>
+          <small>Source: {humanizeSource(card.source)}</small>
         </div>
       ))}
     </div>
+  );
+}
+
+function WorkflowProgress() {
+  const steps = [
+    "Validate",
+    "Profile",
+    "Route",
+    "Plan",
+    "Execute",
+    "Grounded report",
+  ];
+
+  return (
+    <div className="workflowProgress" aria-live="polite">
+      <div className="progressHeader">
+        <strong>Workflow running</strong>
+        <span>Controlled analysis in progress</span>
+      </div>
+      <div className="progressSteps">
+        {steps.map((step) => (
+          <span key={step}>{step}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExportLink({
+  href,
+  filename,
+  title,
+  detail,
+}: {
+  href: string;
+  filename: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <a className="exportLink" href={href} download={filename}>
+      <strong>{title}</strong>
+      <span>{detail}</span>
+    </a>
   );
 }
 

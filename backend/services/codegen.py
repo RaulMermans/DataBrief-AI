@@ -507,7 +507,14 @@ def role_column(role):
 
 
 def first_business_numeric(numeric_columns):
-    excluded_roles = EXCLUDED_ROLES
+    excluded_roles = {
+        "order_id",
+        "product_id",
+        "customer_id",
+        "response_id",
+        "generic_identifier",
+        "reference",
+    }
     for column in numeric_columns:
         if CONTEXT.get("column_roles", {}).get(column) not in excluded_roles:
             return column
